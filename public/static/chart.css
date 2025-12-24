@@ -1,0 +1,157 @@
+/* Styles communs */
+.tv-header__indicators-text,
+[data-name="indicators"] span,
+.js-indicators-text {
+  display: none;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+/* Dark Theme as Default */
+:root {
+  /* Variables */
+  --tv-color-platform-background: #121319;
+  --tv-color-pane-background: #121319;
+  --tv-color-pane-background-secondary: #121319;
+  --tv-color-toolbar-button-background-hover: #121319;
+  --tv-color-toolbar-button-background-secondary-hover: red;
+  --tv-color-toolbar-button-background-expanded: #121319;
+  --tv-color-toolbar-button-text: rgba(255, 255, 255, 0.95);
+  --tv-color-toolbar-button-text-hover: #18C722;
+  --tv-color-toolbar-button-text-active: #18C722;
+  --tv-color-toolbar-button-text-active-hover: #18C722;
+  --tv-color-item-active-text: #18C722;
+  --tv-color-toolbar-toggle-button-background-active: #121319;
+  --tv-color-toolbar-toggle-button-background-active-hover: #121319;
+  --tv-color-popup-background: rgb(241, 188, 225);
+  --tv-color-popup-element-text: rgb(136, 24, 79);
+  --tv-color-popup-element-text-hover: rgb(74, 20, 140);
+  --tv-color-popup-element-background-hover: rgb(244, 143, 177);
+  --tv-color-popup-element-divider-background: rgb(251, 223, 244);
+  --tv-color-popup-element-secondary-text: rgb(74, 20, 140);
+  --tv-color-popup-element-hint-text: rgb(74, 20, 140);
+  --tv-color-popup-element-text-active: rgb(6, 6, 255);
+  --tv-color-popup-element-background-active: red;
+  --tv-color-popup-element-toolbox-text: rgb(136, 24, 79);
+  --tv-color-popup-element-toolbox-text-hover: rgb(74, 20, 140);
+  --tv-color-popup-element-toolbox-text-active-hover: rgb(74, 20, 140);
+  --tv-color-popup-element-toolbox-background-hover: rgb(222, 89, 132);
+  --tv-color-popup-element-toolbox-background-active-hover: magenta;
+}
+
+/* Floating Elements */
+.tv-floating-toolbar,
+.tvcolorpicker-popup,
+.chart-popup,
+.tv-dialog,
+.tv-dropdown-behavior,
+._tv-dialog,
+.js-dialog,
+.tv-floating-panel,
+.context-menu,
+.tv-contextmenu,
+.tv-tooltip-wrapper,
+.tv-tooltip {
+  background-color: #121319;
+  border-color: #6D6D72;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  color: white;
+}
+
+/* Form Elements */
+.tv-dialog input[type="text"],
+.tv-dialog input[type="number"],
+.tv-dialog select,
+.tv-dialog textarea {
+  background-color: #121319;
+  border-color: #363c4e;
+  color: white;
+}
+
+/* Buttons */
+.tv-button,
+.button,
+.tv-dialog__button {
+  background-color: #121319;
+  border-color: #363c4e;
+  color: white;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar-thumb {
+  background: #363c4e;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #454b5e;
+}
+
+/* Indicator Modal */
+.dialog-2AogBbC7.dialog-2cMrvu9r.dialogLibrary-3kc5LZDR {
+  background-color: #121319;
+  border: 1px solid rgba(200, 200, 200, 0.2);
+  box-shadow: 0 4px 20px #121319;
+}
+
+/* Hover Element of List */
+.container-3Ywm3-oo:hover {
+  background-color: #18C722;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* Input Container */
+.container-3n5_2-hI {
+  border-color: rgba(200, 200, 200, 0.2);
+}
+
+/* Title */
+.ellipsis-2sL5JydP {
+  color: #fff;
+}
+
+/* Timeframe */
+.menuWrap-g78rwseC {
+  background-color: #121319;
+  border: 1px solid rgba(200, 200, 200, 0.2);
+  box-shadow: 0 4px 20px #121319;
+}
+
+.item-2IihgTnv {
+  background-color: #121319;
+}
+.item-2IihgTnv:hover {
+  background-color: #121319;
+}
+.isActive-2IihgTnv {
+  background-color: #18C722;
+}
+
+/* Chart Settings */
+.dialog-2AogBbC7 {
+  background-color: #121319;
+  border: 1px solid rgba(200, 200, 200, 0.2);
+}
+
+.active-DggvOZTm,
+.box-2eXD4rIf {
+  background-color: #18C722;
+  border: 1px solid rgba(200, 200, 200, 0.2);
+}
+
+.variant-primary-xRobF0EE {
+  background-color: #18C722;
+  border: 1px solid rgba(200, 200, 200, 0.2);
+}
+
+.variant-secondary-xRobF0EE {
+  border: 1px solid #18C722;
+  color: #18C722;
+}
+
+.container-QDd7xRJ1.focused-QDd7xRJ1,
+.container-QDd7xRJ1.intent-primary-QDd7xRJ1 {
+  border: 1px solid #18C722;
+}

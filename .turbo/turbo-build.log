@@ -1,0 +1,32 @@
+
+[0m[2m[35m$[0m [2m[1mnext build[0m
+[1m[38;2;173;127;168m▲ Next.js 16.1.0[39m[22m (Turbopack)
+- Environments: .env.local
+- Experiments (use with caution):
+  · optimizePackageImports
+
+[33m[1m⚠[22m[39m The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+[37m[1m [22m[39m Creating an optimized production build ...
+[32m[1m✓[22m[39m Compiled successfully in 2.5s
+[37m[1m [22m[39m Skipping validation of types
+[?25l[37m[1m [22m[39m Collecting page data using 13 workers  [36m.[39m[2K[1G[37m[1m [22m[39m Collecting page data using 13 workers  [36m..[39m[2K[1G[?25h[37m[1m [22m[39m Collecting page data using 13 workers in 311.0ms    [32m[1m✓[22m[39m Collecting page data using 13 workers in 311.0ms 
+[?25l[37m[1m [22m[39m Generating static pages using 13 workers (0/6)  [36m[    ][39m[2K[1G[37m[1m [22m[39m Generating static pages using 13 workers (1/6)  [36m[=   ][39m[2K[1G[?25h[32m[1m✓[22m[39m Generating static pages using 13 workers (6/6) in 296.0ms
+[?25l[37m[1m [22m[39m Finalizing page optimization  [36m.[39m[2K[1G[?25h[37m[1m [22m[39m Finalizing page optimization in 14.4ms    [32m[1m✓[22m[39m Finalizing page optimization in 14.4ms 
+
+[4mRoute (app)[24m
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api/chain-info
+├ ○ /embed
+├ ƒ /embed/pool/[blockchain]/[address]
+├ ƒ /embed/token/[blockchain]/[address]
+├ ƒ /pair/[blockchain]/[address]
+└ ƒ /token/[blockchain]/[address]
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+[?25h
