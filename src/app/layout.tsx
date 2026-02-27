@@ -10,7 +10,7 @@ import { NetworkAutoSwitcher } from '@/components/providers/NetworkAutoSwitcher'
 
 export const metadata = {
   title: 'Mobula Trading Terminal',
-  description: 'Mobula Trading Terminal is a lightweight example repository for the Mobula SDK',
+  description: 'Mobula Trading Terminal - Real-time trading terminal powered by Mobula',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
