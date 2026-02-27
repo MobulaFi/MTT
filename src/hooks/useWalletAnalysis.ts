@@ -1,6 +1,6 @@
 // src/hooks/useWalletAnalysis.ts
 import { useEffect } from "react";
-import { getMobulaClient } from "@/lib/mobulaClient";
+import { sdk } from "@/lib/sdkClient";
 import { useWalletAnalysisStore } from "@/store/useWalletAnalysisStore";
 import { WalletAnalysisResponse } from "@mobula_labs/types";
 
@@ -13,12 +13,11 @@ export function useWalletAnalysis(walletAddress?: string, blockchain?: string) {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const client = getMobulaClient();
-        const res: WalletAnalysisResponse = await client.fetchWalletAnalysis({
+        const res = await sdk.fetchWalletAnalysis({
           wallet: walletAddress,
           blockchain: blockchain,
-          period:timeframe,
-        });
+          period: timeframe,
+        }) as WalletAnalysisResponse;
         setData(res);
       } catch (err) {
         console.error("Wallet analysis fetch failed:", err);

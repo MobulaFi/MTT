@@ -1,8 +1,9 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FiSearch } from 'react-icons/fi';
-import { X, Clock, BarChart2, Layers, LayoutGrid, ChevronDown, Coins, PiggyBank } from 'lucide-react';
+import { X, Clock, BarChart2, Layers, LayoutGrid, ChevronDown, Coins, PiggyBank, Wallet } from 'lucide-react';
 import { useSearchStore, type SortByType } from '@/store/searchStore';
+import { useWalletModalStore } from '@/store/useWalletModalStore';
 import { useRouter } from 'next/navigation';
 import { formatCryptoPrice, truncate } from '@mobula_labs/sdk';
 import { formatPriceWithPlaceholder } from '@/utils/tokenMetrics';
@@ -11,6 +12,23 @@ import CopyToClipboard from '@/utils/CopyToClipboard';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { PoolType } from '@mobula_labs/sdk';
 import SafeImage, { validateImageUrl } from './SafeImage';
+
+// Helper to detect if input looks like a wallet address
+const isLikelyWalletAddress = (input: string): { isAddress: boolean; blockchain: string } => {
+  const trimmed = input.trim();
+  
+  // EVM address: 0x followed by 40 hex chars
+  if (/^0x[a-fA-F0-9]{40}$/i.test(trimmed)) {
+    return { isAddress: true, blockchain: 'evm:1' }; // Default to Ethereum
+  }
+  
+  // Solana address: 32-44 base58 chars (no 0, O, I, l)
+  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(trimmed)) {
+    return { isAddress: true, blockchain: 'solana:solana' };
+  }
+  
+  return { isAddress: false, blockchain: '' };
+};
 
 const sortOptions = [
   { icon: Clock, key: 'created_at', label: 'Sort results by Time' },
@@ -159,6 +177,26 @@ export const SearchModal = ({
   const router = useRouter();
   const resultsRef = useRef<HTMLDivElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+  const { openWalletModal } = useWalletModalStore();
+
+  // Check if current input looks like a wallet address
+  const addressCheck = useMemo(() => isLikelyWalletAddress(input), [input]);
+
+  // Handle opening wallet analysis
+  const handleOpenWalletAnalysis = () => {
+    if (addressCheck.isAddress) {
+      // Use selected chain if available, otherwise use detected blockchain
+      const blockchain = selectedChain !== 'All chains' 
+        ? blockchainMap[selectedChain] 
+        : addressCheck.blockchain;
+      
+      openWalletModal({
+        walletAddress: input.trim(),
+        blockchain: blockchain || 'solana:solana',
+      });
+      onClose();
+    }
+  };
 
   const handleSortChange = (newSortBy: SortByType | null) => {
     setSortBy(newSortBy);
@@ -270,7 +308,17 @@ export const SearchModal = ({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isOpen || isLoading || combinedEntries.length === 0) return;
+      if (!isOpen || isLoading) return;
+      
+      // If no results but input looks like address, Enter opens wallet analysis
+      if (e.key === 'Enter' && combinedEntries.length === 0 && addressCheck.isAddress) {
+        e.preventDefault();
+        handleOpenWalletAnalysis();
+        return;
+      }
+      
+      if (combinedEntries.length === 0) return;
+      
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         setSelectedIndex((prev) => Math.min(prev + 1, combinedEntries.length - 1));
@@ -283,16 +331,16 @@ export const SearchModal = ({
         if (!entry) return;
         if (entry.section === 'pools') {
           if (!entry.item?.poolAddress) return;
-          router.push(`/pair/${encodeURIComponent(entry.item.chainId)}/${entry.item.poolAddress}`);
+          router.push(`/pair/${entry.item.chainId}/${entry.item.poolAddress}`);
         } else {
-          router.push(`/token/${encodeURIComponent(entry.item.chainId)}/${entry.item.address}`);
+          router.push(`/token/${entry.item.chainId}/${entry.item.address}`);
         }
         onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, combinedEntries, selectedIndex, isLoading, router, onClose]);
+  }, [isOpen, combinedEntries, selectedIndex, isLoading, router, onClose, addressCheck.isAddress, handleOpenWalletAnalysis]);
 
   useEffect(() => {
     const activeItem = resultsRef.current?.querySelector<HTMLDivElement>(
@@ -496,17 +544,35 @@ export const SearchModal = ({
 
             {!isLoading && results.length === 0 && input.trim() && (
               <div className="text-center py-6">
-                <p className="text-grayLight text-sm">No results found.</p>
-                {(selectedPoolTypes.size > 0 || selectedChain !== 'All chains') && (
-                  <button
-                    onClick={() => {
-                      clearPoolTypeFilters();
-                      handleChainChange('All chains');
-                    }}
-                    className="mt-2 text-xs text-success hover:underline"
-                  >
-                    Clear all filters to see all results
-                  </button>
+                {addressCheck.isAddress ? (
+                  <>
+                    <p className="text-grayLight text-sm mb-3">No token or pool found for this address.</p>
+                    <button
+                      onClick={handleOpenWalletAnalysis}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-success/10 border border-success/40 text-success text-sm font-medium rounded-md hover:bg-success/20 transition-colors"
+                    >
+                      <Wallet size={16} />
+                      View as Wallet
+                    </button>
+                    <p className="mt-2 text-xs text-textTertiary">
+                      This looks like a wallet address. Click to analyze it.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-grayLight text-sm">No results found.</p>
+                    {(selectedPoolTypes.size > 0 || selectedChain !== 'All chains') && (
+                      <button
+                        onClick={() => {
+                          clearPoolTypeFilters();
+                          handleChainChange('All chains');
+                        }}
+                        className="mt-2 text-xs text-success hover:underline"
+                      >
+                        Clear all filters to see all results
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -526,7 +592,7 @@ export const SearchModal = ({
                         key={`${item.chainId}-${item.address}-token`}
                         data-index={globalIndex}
                         onClick={() => {
-                          router.push(`/token/${encodeURIComponent(item.chainId)}/${item.address}`);
+                          router.push(`/token/${item.chainId}/${item.address}`);
                           onClose();
                         }}
                         className={`flex flex-col gap-3 px-3 py-4 border-b border-borderDefault transition-colors md:flex-row md:items-center md:justify-between ${
@@ -594,7 +660,7 @@ export const SearchModal = ({
                       key={`${item.chainId}-${item.poolAddress}-pool`}
                       data-index={globalIndex}
                       onClick={() => {
-                        router.push(`/pair/${encodeURIComponent(item.chainId)}/${item.poolAddress}`);
+                        router.push(`/pair/${item.chainId}/${item.poolAddress}`);
                         onClose();
                       }}
                       className={`flex items-center justify-between px-3 py-4 border-b border-borderDefault transition-colors ${

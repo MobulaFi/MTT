@@ -38,7 +38,6 @@ import {
 } from '@mobula_labs/sdk';
 import { TradeTimeCell } from '@/components/ui/tradetimecell';
 import { getBuyPercent } from '@/components/shared/StatsCard';
-import Image from 'next/image';
 
 interface TokenCardProps {
   pulseData: PulseToken | null;
@@ -227,7 +226,7 @@ interface ImageHoverCardProps {
   onImageError?: () => void;
 }
 
-const ImageHoverCard = memo(({ logo, symbol, name, onImageClick, exchangeLogo, atlStats }: ImageHoverCardProps) => {
+const ImageHoverCard = memo(({ logo, symbol, name, onImageClick, exchangeLogo, atlStats, onImageError }: ImageHoverCardProps) => {
   const [isImageLoading, setIsImageLoading] = useState(false);
 
   return (
@@ -239,16 +238,15 @@ const ImageHoverCard = memo(({ logo, symbol, name, onImageClick, exchangeLogo, a
           data-image-preview="true"
         >
           <div onClick={onImageClick} className="w-full h-full flex items-center justify-center overflow-hidden rounded bg-bgPrimary group-hover:ring-2 group-hover:ring-success/50 transition-all">
-            <Image
+            <SafeImage
               src={logo}
               alt={`${symbol} token`}
               width={64}
               height={64}
               className="object-cover w-full h-full"
-              loading="lazy"
               quality={90}
               priority={false}
-              unoptimized={false}
+              onError={onImageError}
             />
 
             {/* Camera Icon on Hover */}
@@ -423,50 +421,47 @@ function TokenCard({ pulseData, shouldBonded = true, viewName }: TokenCardProps)
     [linkHref, router]
   );
 
-  if (!tokenDetails) {
-    return <div className="p-2 text-gray-500 text-xs">Invalid</div>;
-  }
-
+  // All hooks must be called before any early return to follow React Rules of Hooks
   const visibleStats = useMemo(() => TOKEN_STATS.filter((stat) => customizeRows[stat.id]), [customizeRows]);
-  const holdersCount = useMemo(() => tokenDetails.holdersCount ?? tokenDetails.holders_count ?? 0, [tokenDetails.holdersCount, tokenDetails.holders_count]);
-  const tokenSymbol = useMemo(() => tokenDetails.symbol ?? '', [tokenDetails.symbol]);
-  const logoSrc = tokenDetails.logo;
-  const exchangeLogo = useMemo(() => tokenDetails.exchange?.logo ?? null, [tokenDetails.exchange?.logo]);
+  const holdersCount = useMemo(() => tokenDetails?.holdersCount ?? tokenDetails?.holders_count ?? 0, [tokenDetails?.holdersCount, tokenDetails?.holders_count]);
+  const tokenSymbol = useMemo(() => tokenDetails?.symbol ?? '', [tokenDetails?.symbol]);
+  const logoSrc = tokenDetails?.logo;
+  const exchangeLogo = useMemo(() => tokenDetails?.exchange?.logo ?? null, [tokenDetails?.exchange?.logo]);
   const hasLogo = Boolean(logoSrc) && !logoError;
-  const formattedAddress = useMemo(() => formatAddressLabel(tokenDetails.address), [tokenDetails.address]);
-  const buys = useMemo(() => Number(tokenDetails.buys_24h ?? 0), [tokenDetails.buys_24h]);
-  const sells = useMemo(() => Number(tokenDetails.sells_24h ?? 0), [tokenDetails.sells_24h]);
+  const formattedAddress = useMemo(() => formatAddressLabel(tokenDetails?.address), [tokenDetails?.address]);
+  const buys = useMemo(() => Number(tokenDetails?.buys_24h ?? 0), [tokenDetails?.buys_24h]);
+  const sells = useMemo(() => Number(tokenDetails?.sells_24h ?? 0), [tokenDetails?.sells_24h]);
   const buyPercent = useMemo(() => getBuyPercent(buys, sells), [buys, sells]);
-  const migrations = useMemo(() => tokenDetails.deployerMigrations ?? 0, [tokenDetails.deployerMigrations]);
+  const migrations = useMemo(() => tokenDetails?.deployerMigrations ?? 0, [tokenDetails?.deployerMigrations]);
   const hasMigrations = migrations > 0;
-  const priceChange = useMemo(() => tokenDetails.price_change_24h ?? 0, [tokenDetails.price_change_24h]);
-  const bondingLabel = useMemo(() => formatPercentage(tokenDetails.bondingPercentage ?? 0), [tokenDetails.bondingPercentage]);
-  const sourceLabel = useMemo(() => tokenDetails.source ?? 'Unknown', [tokenDetails.source]);
+  const priceChange = useMemo(() => tokenDetails?.price_change_24h ?? 0, [tokenDetails?.price_change_24h]);
+  const bondingLabel = useMemo(() => formatPercentage(tokenDetails?.bondingPercentage ?? 0), [tokenDetails?.bondingPercentage]);
+  const sourceLabel = useMemo(() => tokenDetails?.source ?? 'Unknown', [tokenDetails?.source]);
 
   const timestamp = useMemo(() => {
-    if (viewName === 'bonded' && tokenDetails.bonded_at && typeof tokenDetails.bonded_at === 'string' && tokenDetails.bonded_at !== tokenDetails.created_at) {
+    if (viewName === 'bonded' && tokenDetails?.bonded_at && typeof tokenDetails.bonded_at === 'string' && tokenDetails.bonded_at !== tokenDetails.created_at) {
       return tokenDetails.bonded_at;
     }
-    return tokenDetails.createdAt ?? tokenDetails.created_at ?? '';
-  }, [viewName, tokenDetails.bonded_at, tokenDetails.created_at, tokenDetails.createdAt]);
+    return tokenDetails?.createdAt ?? tokenDetails?.created_at ?? '';
+  }, [viewName, tokenDetails?.bonded_at, tokenDetails?.created_at, tokenDetails?.createdAt]);
 
   // Memoize all formatted values to prevent recalculation on every render
   const formattedMarketCap = useMemo(
-    () => formatCryptoPrice(tokenDetails.marketCap ?? 0),
-    [tokenDetails.marketCap]
+    () => formatCryptoPrice(tokenDetails?.marketCap ?? 0),
+    [tokenDetails?.marketCap]
   );
 
   const formattedVolume = useMemo(
-    () => formatCryptoPrice(tokenDetails.organic_volume_sell_24h ?? 0),
-    [tokenDetails.organic_volume_sell_24h]
+    () => formatCryptoPrice(tokenDetails?.organic_volume_sell_24h ?? 0),
+    [tokenDetails?.organic_volume_sell_24h]
   );
 
   const formattedFees = useMemo(
-    () => formatCryptoPrice(tokenDetails.fees_paid_24h ?? 0, {
+    () => formatCryptoPrice(tokenDetails?.fees_paid_24h ?? 0, {
       minFractionDigits: 1,
       maxFractionDigits: 1,
     }),
-    [tokenDetails.fees_paid_24h]
+    [tokenDetails?.fees_paid_24h]
   );
 
   const formattedPriceChange = useMemo(
@@ -476,6 +471,10 @@ function TokenCard({ pulseData, shouldBonded = true, viewName }: TokenCardProps)
     }),
     [priceChange]
   );
+
+  if (!tokenDetails) {
+    return <div className="p-2 text-gray-500 text-xs">Invalid</div>;
+  }
 
 
   return (
@@ -507,9 +506,9 @@ function TokenCard({ pulseData, shouldBonded = true, viewName }: TokenCardProps)
                   />
                 ) : (
                   <div className="flex-shrink-0 relative w-16 h-16">
-                    <div className="w-full h-full flex items-center justify-center bg-black rounded">
-                      <span className="text-xs font-bold text-gray-300">
-                        {tokenSymbol.slice(0, 1).toUpperCase() || '?'}
+                    <div className="w-full h-full flex items-center justify-center bg-[#0a0f1a] border border-blue-500/40 rounded">
+                      <span className="text-xl font-semibold text-blue-400 tracking-wide select-none">
+                        {(tokenDetails.name?.charAt(0) ?? tokenSymbol.charAt(0) ?? '?').toUpperCase()}
                       </span>
                     </div>
                     {exchangeLogo && (

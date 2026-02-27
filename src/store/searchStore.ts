@@ -1,6 +1,6 @@
 'use client';
 import { create } from 'zustand';
-import { getMobulaClient } from '@/lib/mobulaClient';
+import { sdk } from '@/lib/sdkClient';
 import { PoolType } from '@mobula_labs/sdk';
 
 export type SortByType =
@@ -78,8 +78,6 @@ export const useSearchStore = create<SearchState>((set, get) => ({
       return;
     }
 
-    const client = getMobulaClient();
-
     const nextSortBy = typeof sortBy !== 'undefined' ? sortBy : get().sortBy;
 
     set({
@@ -92,7 +90,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     });
 
     try {
-      const params: Record<string, any> = {
+      const params: Record<string, string | boolean | undefined> = {
         input,
         excludeBonded: undefined,
       };
@@ -104,7 +102,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
       if (get().mode) params.mode = get().mode;
       if (get().type) params.type = get().type;
 
-      const filters: Record<string, any> = {};
+      const filters: Record<string, string> = {};
       
       if (get().poolTypes.length > 0) {
         filters.poolTypes = get().poolTypes.join(',');
@@ -118,9 +116,9 @@ export const useSearchStore = create<SearchState>((set, get) => ({
         params.filters = JSON.stringify(filters);
       }
 
-      const response = await client.fetchSearchFast(params as Parameters<typeof client.fetchSearchFast>[0]);
-      set({ results: response?.data || [], isLoading: false });
-    } catch (err: any) {
+      const response = await sdk.fetchSearchFast(params as Parameters<typeof sdk.fetchSearchFast>[0]);
+      set({ results: (response as { data?: unknown[] })?.data || [], isLoading: false });
+    } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Search failed', isLoading: false });
     }
   },

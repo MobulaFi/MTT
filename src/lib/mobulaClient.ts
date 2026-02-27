@@ -14,11 +14,45 @@ let loggingClient: MobulaClient | null = null;
 let currentRestUrl: string = REST_ENDPOINTS[DEFAULT_REST_ENDPOINT];
 let currentWssUrlMap: Partial<Record<keyof SubscriptionPayload, string>> = {};
 
+interface StoredCustomWss {
+  type: keyof SubscriptionPayload;
+  url: string;
+  label?: string;
+  mode?: string;
+}
+
+function getResolvedApiKey(): string | undefined {
+  // Server (SSR): use server-only env key (not exposed to browser)
+  if (typeof window === 'undefined') {
+    return process.env.MOBULA_SERVER_SIDE_KEY;
+  }
+  // Client: use only user-entered key from localStorage
+  try {
+    const raw = localStorage.getItem('mobula-api-storage');
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as { state?: { apiKey?: string } };
+    const key = parsed.state?.apiKey;
+    if (key && typeof key === 'string' && key.trim()) return key.trim();
+  } catch {
+    // ignore
+  }
+  return undefined;
+}
+
 if (typeof window !== 'undefined') {
   const savedUrl = localStorage.getItem('mobula-api-storage');
   if (savedUrl) {
     try {
-      const parsed = JSON.parse(savedUrl);
+      const parsed = JSON.parse(savedUrl) as {
+        state?: {
+          selectedRestUrl?: string;
+          currentUrl?: string;
+          selectedIndividualWssType?: keyof SubscriptionPayload;
+          customWssUrls?: StoredCustomWss[];
+          selectedAllModeWssUrl?: string;
+          selectedWssRegion?: string;
+        };
+      };
       
       // Priority: selectedRestUrl > currentUrl (fallback)
       if (parsed.state?.selectedRestUrl) {
@@ -30,7 +64,7 @@ if (typeof window !== 'undefined') {
       // Handle WSS URLs with proper priority
       if (parsed.state?.selectedIndividualWssType) {
         const customUrl = parsed.state?.customWssUrls?.find(
-          (c: any) => c.type === parsed.state.selectedIndividualWssType
+          (c: StoredCustomWss) => c.type === parsed.state?.selectedIndividualWssType
         );
         if (customUrl) {
           const wssType = parsed.state.selectedIndividualWssType as keyof SubscriptionPayload;
@@ -67,7 +101,7 @@ if (typeof window !== 'undefined') {
   // Initialize client on load
   client = new MobulaClient({
     restUrl: currentRestUrl,
-    apiKey: process.env.NEXT_PUBLIC_MOBULA_API_KEY,
+    apiKey: getResolvedApiKey(),
     debug: true,
     timeout: 200000,
     wsUrlMap: wsUrlMapToUse,
@@ -87,7 +121,7 @@ export function initMobulaClient(
     const wsUrlMapToUse = Object.keys(currentWssUrlMap).length > 0 ? currentWssUrlMap : undefined;
     client = new MobulaClient({
       restUrl,
-      apiKey: process.env.NEXT_PUBLIC_MOBULA_API_KEY,
+      apiKey: getResolvedApiKey(),
       debug: true,
       timeout: 200000,
       wsUrlMap: wsUrlMapToUse,
@@ -98,9 +132,21 @@ export function initMobulaClient(
   return loggingClient!;
 }
 
+export function reinitMobulaClient(): void {
+  const wsUrlMapToUse = Object.keys(currentWssUrlMap).length > 0 ? currentWssUrlMap : undefined;
+  client = new MobulaClient({
+    restUrl: currentRestUrl,
+    apiKey: getResolvedApiKey(),
+    debug: true,
+    timeout: 200000,
+    wsUrlMap: wsUrlMapToUse,
+  });
+  loggingClient = createLoggingMobulaClient(client);
+}
+
 export function getMobulaClient(restUrlOverride?: string, force = false): MobulaClient {
   const defaultRestUrl = REST_ENDPOINTS[DEFAULT_REST_ENDPOINT];
-  let restUrlToUse: string = process.env.MOBULA_API_URL || defaultRestUrl;
+  let restUrlToUse: string = process.env.MOBULA_SERVER_SIDE_API_URL || defaultRestUrl;
 
 
   if (restUrlOverride?.trim()) {
@@ -125,7 +171,7 @@ export function getMobulaClient(restUrlOverride?: string, force = false): Mobula
 
     client = new MobulaClient({
       restUrl: restUrlToUse,
-      apiKey: process.env.NEXT_PUBLIC_MOBULA_API_KEY,
+      apiKey: getResolvedApiKey(),
       debug: true,
       timeout: 200000,
       wsUrlMap: wsUrlMapToUse,
@@ -143,7 +189,7 @@ export function updateWssUrlMap(wsUrlMap: Partial<Record<keyof SubscriptionPaylo
     const wsUrlMapToUse = Object.keys(currentWssUrlMap).length > 0 ? currentWssUrlMap : undefined;
     client = new MobulaClient({
       restUrl: currentRestUrl,
-      apiKey: process.env.NEXT_PUBLIC_MOBULA_API_KEY,
+      apiKey: getResolvedApiKey(),
       debug: true,
       timeout: 200000,
       wsUrlMap: wsUrlMapToUse,

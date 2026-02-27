@@ -121,6 +121,7 @@ export const buildToken = (t: any, options: BuildTokenOptions = {}): StatsCardDa
   quoteToken: options.quoteToken,
   headerImage: t.dexscreenerHeader ?? t.logo,
   socials: t.socials,
+  bondingInfo: deriveBondingInfo(t),
 
   timeframes: [
     { label: '5m', value: t.priceChange5minPercentage ?? 0, key: '5min' },

@@ -411,16 +411,20 @@ function TokenDisplayRow({
           </p>
         )}
       </div>
-      {logo && (
-        <div className="relative w-9 h-9 sm:w-10 sm:h-10 flex-shrink-0 rounded-full overflow-hidden ring-1 sm:ring-2 ring-borderDefault ml-2">
+      <div className="relative w-9 h-9 sm:w-10 sm:h-10 flex-shrink-0 rounded-full overflow-hidden ring-1 sm:ring-2 ring-borderDefault ml-2">
+        {logo ? (
           <SafeImage
             src={logo}
             alt={symbol}
             fill
             className="object-cover"
           />
-        </div>
-      )}
+        ) : (
+          <div className="w-full h-full bg-success/30 flex items-center justify-center text-success font-bold text-sm">
+            {symbol.charAt(0).toUpperCase()}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

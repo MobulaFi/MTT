@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useEffect, useCallback, memo } from 'react';
-import { Settings2, Funnel, ArrowUpDown, X } from 'lucide-react';
+import { Settings2, Filter, ArrowUpDown, X } from 'lucide-react';
 import TradingViewChart from '@/components/charts';
 import ResizablePanelsLayout from '@/components/shared/ResizablePanelLayout';
 import { TradesTable } from '@/components/tables/TradesTable';
@@ -89,7 +89,7 @@ const PairTradesActions = memo(({
           }`}
         onClick={onToggleDevFilter}
       >
-        <Funnel size={13} className={isDevFilterActive ? 'text-white' : 'text-textPrimary'} />
+        <Filter size={13} className={isDevFilterActive ? 'text-white' : 'text-textPrimary'} />
         <span>DEV</span>
       </button>
     )}
@@ -186,7 +186,12 @@ function PairResizablePanelsComponent({
   }, [address, blockchain, resetFilters]);
 
   // Data Hooks
-  useCombinedHolders(marketData.base.address, blockchain);
+  useCombinedHolders(
+    marketData.base.address, 
+    blockchain,
+    marketData.base.priceUSD ?? 0,
+    marketData.base.totalSupply ?? 0
+  );
   // Use granular selector to prevent unnecessary re-renders
   const totalSupply = usePairStore((s) => s.totalSupply);
   const holdersCount = usePairHoldersStore((s) => s.holdersCount);
@@ -262,8 +267,9 @@ function PairResizablePanelsComponent({
       storeTrades={[]} // Empty - TradesTable uses store directly
       isPair={true}
       showCurrencyToggle={true}
+      assetAddress={marketData.base.address}
     />
-  ), [address, blockchain]); // NO tradesHook.wsTrades dependency!
+  ), [address, blockchain, marketData.base.address]); // NO tradesHook.wsTrades dependency!
 
   const devTokensTable = useMemo(() => (
     marketData.base.deployer ? (
@@ -391,17 +397,19 @@ function PairResizablePanelsComponent({
       priceUSD: marketData.base.priceUSD,
       base: { symbol: marketData.base.symbol ?? undefined },
       quote: { symbol: marketData.quote.symbol ?? undefined },
+      circulatingSupply: marketData.base.circulatingSupply ?? marketData.base.totalSupply ?? 0,
     }),
-    [address, blockchain, marketData.base.symbol, marketData.base.priceUSD, marketData.quote.symbol],
+    [address, blockchain, marketData.base.symbol, marketData.base.priceUSD, marketData.base.circulatingSupply, marketData.base.totalSupply, marketData.quote.symbol],
   );
 
-  // Memoize chart component
+  // Memoize chart component - wallet address is handled internally by chart
   const chartComponent = useMemo(() => (
     <TradingViewChart
       isPair
       baseAsset={baseAsset}
+      deployer={marketData.base.deployer ?? undefined}
     />
-  ), [baseAsset]);
+  ), [baseAsset, marketData.base.deployer]);
 
   // Memoize trades sidebar - TradesTable subscribes to store internally
   const tradesSidebar = useMemo(() => (
@@ -410,8 +418,9 @@ function PairResizablePanelsComponent({
       storeTrades={[]} // Empty - TradesTable uses store directly
       isPair
       compact
+      assetAddress={marketData.base.address}
     />
-  ), [address, blockchain]); // NO tradesHook.wsTrades dependency!
+  ), [address, blockchain, marketData.base.address]); // NO tradesHook.wsTrades dependency!
 
   return (
     <>

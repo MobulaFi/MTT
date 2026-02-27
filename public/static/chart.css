@@ -10,14 +10,11 @@
   height: 8px;
 }
 
-/* Dark Theme as Default */
-:root {
-  /* Variables */
+html.theme-dark {
   --tv-color-platform-background: #121319;
   --tv-color-pane-background: #121319;
   --tv-color-pane-background-secondary: #121319;
   --tv-color-toolbar-button-background-hover: #121319;
-  --tv-color-toolbar-button-background-secondary-hover: red;
   --tv-color-toolbar-button-background-expanded: #121319;
   --tv-color-toolbar-button-text: rgba(255, 255, 255, 0.95);
   --tv-color-toolbar-button-text-hover: #18C722;
@@ -26,20 +23,21 @@
   --tv-color-item-active-text: #18C722;
   --tv-color-toolbar-toggle-button-background-active: #121319;
   --tv-color-toolbar-toggle-button-background-active-hover: #121319;
-  --tv-color-popup-background: rgb(241, 188, 225);
-  --tv-color-popup-element-text: rgb(136, 24, 79);
-  --tv-color-popup-element-text-hover: rgb(74, 20, 140);
-  --tv-color-popup-element-background-hover: rgb(244, 143, 177);
-  --tv-color-popup-element-divider-background: rgb(251, 223, 244);
-  --tv-color-popup-element-secondary-text: rgb(74, 20, 140);
-  --tv-color-popup-element-hint-text: rgb(74, 20, 140);
-  --tv-color-popup-element-text-active: rgb(6, 6, 255);
-  --tv-color-popup-element-background-active: red;
-  --tv-color-popup-element-toolbox-text: rgb(136, 24, 79);
-  --tv-color-popup-element-toolbox-text-hover: rgb(74, 20, 140);
-  --tv-color-popup-element-toolbox-text-active-hover: rgb(74, 20, 140);
-  --tv-color-popup-element-toolbox-background-hover: rgb(222, 89, 132);
-  --tv-color-popup-element-toolbox-background-active-hover: magenta;
+}
+
+html:not(.theme-dark) {
+  --tv-color-platform-background: #ffffff;
+  --tv-color-pane-background: #ffffff;
+  --tv-color-pane-background-secondary: #ffffff;
+  --tv-color-toolbar-button-background-hover: #f3f4f6;
+  --tv-color-toolbar-button-background-expanded: #f3f4f6;
+  --tv-color-toolbar-button-text: #131722;
+  --tv-color-toolbar-button-text-hover: #18C722;
+  --tv-color-toolbar-button-text-active: #131722;
+  --tv-color-toolbar-button-text-active-hover: #18C722;
+  --tv-color-item-active-text: #18C722;
+  --tv-color-toolbar-toggle-button-background-active: #f3f4f6;
+  --tv-color-toolbar-toggle-button-background-active-hover: #e5e7eb;
 }
 
 /* Floating Elements */
@@ -55,10 +53,10 @@
 .tv-contextmenu,
 .tv-tooltip-wrapper,
 .tv-tooltip {
-  background-color: #121319;
+  background-color: var(--tv-color-platform-background, #121319);
   border-color: #6D6D72;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-  color: white;
+  color: var(--tv-color-toolbar-button-text, white);
 }
 
 /* Form Elements */
@@ -66,18 +64,18 @@
 .tv-dialog input[type="number"],
 .tv-dialog select,
 .tv-dialog textarea {
-  background-color: #121319;
+  background-color: var(--tv-color-platform-background, #121319);
   border-color: #363c4e;
-  color: white;
+  color: var(--tv-color-toolbar-button-text, white);
 }
 
 /* Buttons */
 .tv-button,
 .button,
 .tv-dialog__button {
-  background-color: #121319;
+  background-color: var(--tv-color-platform-background, #121319);
   border-color: #363c4e;
-  color: white;
+  color: var(--tv-color-toolbar-button-text, white);
 }
 
 /* Scrollbar */
@@ -91,9 +89,9 @@
 
 /* Indicator Modal */
 .dialog-2AogBbC7.dialog-2cMrvu9r.dialogLibrary-3kc5LZDR {
-  background-color: #121319;
+  background-color: var(--tv-color-platform-background, #121319);
   border: 1px solid rgba(200, 200, 200, 0.2);
-  box-shadow: 0 4px 20px #121319;
+  box-shadow: 0 4px 20px var(--tv-color-platform-background, #121319);
 }
 
 /* Hover Element of List */
@@ -109,21 +107,73 @@
 
 /* Title */
 .ellipsis-2sL5JydP {
-  color: #fff;
+  color: var(--tv-color-toolbar-button-text, #fff);
+}
+
+.drawingToolbar,
+.drawing-toolbar,
+[class*="drawingToolbar"],
+[class*="drawing-toolbar"],
+.tv-side-toolbar,
+.side-toolbar,
+[class*="sideToolbar"],
+[class*="side-toolbar"],
+[class*="wrap-"][class*="379NmUSU"],
+[class*="scrollWrap-"],
+.tv-floating-toolbar {
+  background-color: var(--tv-color-platform-background, #121319) !important;
+}
+
+html:not(.theme-dark) .tv-floating-toolbar,
+html:not(.theme-dark) [class*="wrap-"][class*="379NmUSU"],
+html:not(.theme-dark) [class*="scrollWrap-"],
+html:not(.theme-dark) [class*="group-"][class*="3uonVBsm"],
+html:not(.theme-dark) [class*="separatorWrap-"] {
+  background-color: var(--tv-color-platform-background, #fff) !important;
+}
+
+html:not(.theme-dark) .tv-floating-toolbar,
+html:not(.theme-dark) .tv-floating-toolbar *,
+html:not(.theme-dark) [class*="wrap-"][class*="379NmUSU"],
+html:not(.theme-dark) [class*="wrap-"][class*="379NmUSU"] *,
+html:not(.theme-dark) [class*="scrollWrap-"],
+html:not(.theme-dark) [class*="scrollWrap-"] *,
+html:not(.theme-dark) [class*="button-"][class*="1SoiPS"],
+html:not(.theme-dark) [class*="button-"][class*="2Vpz_LXc"] {
+  color: var(--tv-color-toolbar-button-text, #131722) !important;
+}
+/* Light theme SVG icons */
+html:not(.theme-dark) .tv-floating-toolbar svg,
+html:not(.theme-dark) .tv-floating-toolbar svg path,
+html:not(.theme-dark) [class*="wrap-"][class*="379NmUSU"] svg,
+html:not(.theme-dark) [class*="wrap-"][class*="379NmUSU"] svg path,
+html:not(.theme-dark) [class*="scrollWrap-"] svg,
+html:not(.theme-dark) [class*="scrollWrap-"] svg path {
+  fill: var(--tv-color-toolbar-button-text, #131722) !important;
+  stroke: var(--tv-color-toolbar-button-text, #131722) !important;
+  color: var(--tv-color-toolbar-button-text, #131722) !important;
+}
+
+html.theme-dark .tv-floating-toolbar,
+html.theme-dark [class*="wrap-"][class*="379NmUSU"],
+html.theme-dark [class*="scrollWrap-"],
+html.theme-dark [class*="group-"][class*="3uonVBsm"],
+html.theme-dark [class*="separatorWrap-"] {
+  background-color: var(--tv-color-platform-background, #121319) !important;
 }
 
 /* Timeframe */
 .menuWrap-g78rwseC {
-  background-color: #121319;
+  background-color: var(--tv-color-platform-background, #121319);
   border: 1px solid rgba(200, 200, 200, 0.2);
-  box-shadow: 0 4px 20px #121319;
+  box-shadow: 0 4px 20px var(--tv-color-platform-background, #121319);
 }
 
 .item-2IihgTnv {
-  background-color: #121319;
+  background-color: var(--tv-color-platform-background, #121319);
 }
 .item-2IihgTnv:hover {
-  background-color: #121319;
+  background-color: var(--tv-color-toolbar-button-background-hover, #121319);
 }
 .isActive-2IihgTnv {
   background-color: #18C722;
@@ -131,7 +181,7 @@
 
 /* Chart Settings */
 .dialog-2AogBbC7 {
-  background-color: #121319;
+  background-color: var(--tv-color-platform-background, #121319);
   border: 1px solid rgba(200, 200, 200, 0.2);
 }
 

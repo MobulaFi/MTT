@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef } from 'react';
-import { getMobulaClient } from '@/lib/mobulaClient';
+import { streams } from '@/lib/sdkClient';
 import { usePairStore } from '@/features/pair/store/pairStore';
 import type { WssMarketDetailsResponseType } from '@mobula_labs/types';
 import { UpdateBatcher } from '@/utils/UpdateBatcher';
@@ -27,45 +27,42 @@ export function usePairData(
   );
 
   useEffect(() => {
-    const client = getMobulaClient();
     setError(null);
     pairBatcherRef.current.clear();
 
-    // Initialize from SSR or cached data
+    // Use SSR data if available
     if (initialData) {
       setData(initialData);
       setTotalSupply(initialData.base?.totalSupply ?? null);
+      setLoading(false);
     } else {
       setLoading(true);
     }
 
-    let subscriptionId: string | null = null;
+    // Subscribe to pair updates (streams wrapper handles server/client mode)
+    let subscription: ReturnType<typeof streams.subscribeMarketDetails> | null = null;
 
     try {
-      subscriptionId = client.streams.subscribe(
-        'market-details',
+      subscription = streams.subscribeMarketDetails(
         { pools: [{ blockchain, address }] },
         (tradeUpdate: unknown) => {
           const data = tradeUpdate as WssMarketDetailsResponseType;
           if (data?.pairData) {
-            // Queue update instead of immediate processing (batched via rAF)
             pairBatcherRef.current.add(data.pairData);
           }
         }
       );
     } catch (error) {
       console.error('Failed to subscribe to pair updates:', error);
-      setError(error instanceof Error ? error.message : 'Failed to load pair data');
+      if (!initialData) {
+        setError(error instanceof Error ? error.message : 'Failed to load pair data');
+      }
     }
 
     // Cleanup subscription on unmount or dependency change
     return () => {
-      if (subscriptionId && typeof client.streams.unsubscribe === 'function') {
-        try {
-          client.streams.unsubscribe('market-details', subscriptionId);
-        } catch (error) {
-          console.error('Failed to unsubscribe:', error);
-        }
+      if (subscription) {
+        subscription.unsubscribe();
       }
       pairBatcherRef.current.clear();
       reset();

@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { getMobulaClient } from '@/lib/mobulaClient';
+import { sdk } from '@/lib/sdkClient';
 import { SystemMetadataResponse } from '@mobula_labs/types';
 import { usePulseFilterStore, Section } from '@/features/pulse/store/usePulseModalFilterStore';
 
@@ -109,8 +109,7 @@ export const useChainsAndProtocols = (section: Section) => {
         }
 
         // Fetch from SDK
-        const client = getMobulaClient();
-        const response = await client.fetchSystemMetadata();
+        const response = await sdk.fetchSystemMetadata() as SystemMetadataResponse;
 
         if (!response || !response.data) {
           throw new Error('Invalid metadata response from SDK');

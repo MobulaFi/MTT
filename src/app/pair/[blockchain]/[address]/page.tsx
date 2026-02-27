@@ -1,7 +1,7 @@
 import { getMobulaClient } from '@/lib/mobulaClient';
 import PairHeader from '@/features/pair/components/PairHeader';
 import { MarketDetailsResponse } from '@mobula_labs/types';
-import { formatPriceWithPlaceholder } from '@/utils/tokenMetrics';
+import { formatPriceWithPlaceholder, formatCompactNumber, getPriceChangeArrow } from '@/utils/tokenMetrics';
 import PairStatsCards from '@/features/pair/components/PairCard';
 import PairResizablePanels from '@/features/pair/components/PairResizablePanels';
 import { cookies } from 'next/headers'
@@ -48,7 +48,9 @@ export async function generateMetadata({ params }: PairPageProps) {
     baseToken.logo ||
     'https://framerusercontent.com/images/83wKw3MxTAt4Shj56JmraGNXdM.png?scale-down-to=1024';
 
-  const title = `${baseToken?.symbol} ${price} ${vsToken?.symbol || 'USD'} price today, ${baseToken?.name} live chart, forecast | Mobula`;
+  const marketCap = formatCompactNumber(baseToken.marketCapUSD);
+  const arrow = getPriceChangeArrow(initialData.priceChange24hPercentage);
+  const title = `${baseToken?.symbol} ${arrow} ${marketCap} | Mobula`;
   const readablePrice = price === 'N/A' ? 'N/A' : `$${price}`;
   const description = `The ${baseToken?.name} live price is ${readablePrice} ${vsToken?.symbol || 'USD'} with a 24h volume of $${volume.toLocaleString()} USD. Buy ${baseToken?.symbol}. Check ${baseToken?.symbol} airdrop and audits. ${tokenAddress} is ${baseToken?.symbol} (${baseToken?.name}) token contract address on ${initialData.blockchain}.`;
 

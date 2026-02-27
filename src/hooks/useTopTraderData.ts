@@ -1,7 +1,7 @@
 // hooks/useTopTradersData.ts
 import { useEffect, useCallback, useRef } from 'react';
 import { useTopTradersStore } from '@/store/useTopTraderStore';
-import { getMobulaClient } from '@/lib/mobulaClient';
+import { sdk } from '@/lib/sdkClient';
 import type { TokenPositionsParams, TokenPositionsResponse } from '@mobula_labs/types';
 
 interface UseTopTradersDataParams {
@@ -61,8 +61,6 @@ export function useTopTradersData({ tokenAddress, blockchain }: UseTopTradersDat
       setFilters(filtersToUse);
 
       try {
-        const client = getMobulaClient();
-
         const requestParams: TokenPositionsParams = {
           address: tokenAddress,
           blockchain: blockchain,
@@ -78,7 +76,7 @@ export function useTopTradersData({ tokenAddress, blockchain }: UseTopTradersDat
           requestParams.walletAddresses = filtersToUse.walletAddresses;
         }
 
-        const response: TokenPositionsResponse = await client.fetchTokenTraderPositions(requestParams);
+        const response = await sdk.fetchTokenTraderPositions(requestParams) as TokenPositionsResponse;
 
         if (response?.data) {
           setData(response);

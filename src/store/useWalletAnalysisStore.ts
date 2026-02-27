@@ -11,6 +11,7 @@ interface WalletAnalysisState {
   setTimeframe: (timeframe: Timeframe) => void;
   setData: (data: WalletAnalysisResponse | null) => void;
   setLoading: (loading: boolean) => void;
+  reset: () => void;
 }
 
 export const useWalletAnalysisStore = create<WalletAnalysisState>((set) => ({
@@ -20,4 +21,5 @@ export const useWalletAnalysisStore = create<WalletAnalysisState>((set) => ({
   setTimeframe: (timeframe) => set({ timeframe }),
   setData: (data) => set({ data }),
   setLoading: (loading) => set({ loading }),
+  reset: () => set({ data: null, loading: false }),
 }));

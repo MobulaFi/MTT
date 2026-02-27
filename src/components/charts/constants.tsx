@@ -2,7 +2,7 @@
 
 import type { ResolutionString } from '../../../public/static/charting_library/charting_library';
 import type { ReactNode } from 'react';
-export const ENABLED_FEATURES = ['show_spread_operators', 'header_resolutions', 'seconds_resolution', 'left_toolbar' , 'create_volume_indicator_by_default_once'];
+export const ENABLED_FEATURES = ['show_spread_operators', 'header_resolutions', 'seconds_resolution', 'left_toolbar' , 'create_volume_indicator_by_default_once', 'two_character_bar_marks_labels'];
 
 export const DISABLED_FEATURES = [
   'symbol_info',

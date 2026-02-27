@@ -19,6 +19,8 @@ export interface EmbedConfig {
   bgColor?: string;
   candleUpColor?: string;
   candleDownColor?: string;
+  showSymbol: boolean;
+  showGridLines: boolean;
 }
 
 function isLightColor(hexColor: string): boolean {
@@ -132,6 +134,13 @@ export function validateEmbedParams(searchParams: URLSearchParams): EmbedConfig 
   const candleUpColor = sanitizeHexColor(searchParams.get('candle_up_color') || undefined);
   const candleDownColor = sanitizeHexColor(searchParams.get('candle_down_color') || undefined);
 
+  // Parse boolean options (default to true if not specified)
+  const showSymbolParam = searchParams.get('show_symbol');
+  const showSymbol = showSymbolParam === null ? true : showSymbolParam === '1';
+  
+  const showGridLinesParam = searchParams.get('show_grid_lines');
+  const showGridLines = showGridLinesParam === null ? true : showGridLinesParam === '1';
+
   return {
     resolution,
     chartType,
@@ -139,6 +148,8 @@ export function validateEmbedParams(searchParams: URLSearchParams): EmbedConfig 
     bgColor,
     candleUpColor,
     candleDownColor,
+    showSymbol,
+    showGridLines,
   };
 }
 

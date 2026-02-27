@@ -14,7 +14,7 @@ export default function TokenStatsCard() {
   const quoteToken = useMemo(() => {
     if (!token || !markets || markets.length === 0) return undefined;
     const preferredMarket = markets.find((market) => market.poolAddress === token.poolAddress) ?? markets[0];
-    if (!preferredMarket?.quoteAddress) return undefined;
+    if (!preferredMarket?.quoteAddress || !preferredMarket?.quoteSymbol) return undefined;
 
     return {
       symbol: preferredMarket.quoteSymbol,

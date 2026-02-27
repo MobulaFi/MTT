@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { getMobulaClient } from '@/lib/mobulaClient';
+import { streams } from '@/lib/sdkClient';
 import { useTokenStore } from '@/features/token/store/useTokenStore';
 import type { WssTokenDetailsResponseType } from '@mobula_labs/types';
 import { UpdateBatcher } from '@/utils/UpdateBatcher';
@@ -28,43 +28,41 @@ export function useTokenData(
   useEffect(() => {
     if (!address || !blockchain) return;
 
-    const client = getMobulaClient();
-    let subscriptionId: string | null = null;
-
     setError(null);
     tokenBatcherRef.current.clear();
 
+    // Use SSR data if available
     if (initialData) {
       setToken(initialData);
+      setTokenLoading(false);
     } else {
       setTokenLoading(true);
     }
 
+    // Subscribe to token updates (streams wrapper handles server/client mode)
+    let subscription: ReturnType<typeof streams.subscribeTokenDetails> | null = null;
+    
     try {
-      subscriptionId = client.streams.subscribe(
-        'token-details',
+      subscription = streams.subscribeTokenDetails(
         { tokens: [{ blockchain, address }] },
         (update: unknown) => {
           const data = update as WssTokenDetailsResponseType;
           if (data?.tokenData) {
-            // Queue update instead of immediate processing (batched via rAF)
             tokenBatcherRef.current.add(data.tokenData);
           }
         }
       );
     } catch (error) {
       console.error('Failed to subscribe to token updates:', error);
-      setError(error instanceof Error ? error.message : 'Failed to load token data');
-      setTokenLoading(false);
+      if (!initialData) {
+        setError(error instanceof Error ? error.message : 'Failed to load token data');
+        setTokenLoading(false);
+      }
     }
 
     return () => {
-      if (subscriptionId && typeof client.streams.unsubscribe === 'function') {
-        try {
-          client.streams.unsubscribe('token-details', subscriptionId);
-        } catch (error) {
-          console.error('Failed to unsubscribe:', error);
-        }
+      if (subscription) {
+        subscription.unsubscribe();
       }
       tokenBatcherRef.current.clear();
       reset();

@@ -125,6 +125,20 @@ export function useWalletConnection() {
     }
   }, [connectMetaMask, connectPhantom]);
 
+  const switchChain = useCallback(async (chainId: number) => {
+    const { getMetaMaskProvider } = await import('@/lib/wallet/utils/getProvider');
+    const provider = getMetaMaskProvider();
+    if (!provider) {
+      throw new Error('EVM wallet not available');
+    }
+    const hexChainId = `0x${chainId.toString(16)}`;
+    await provider.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: hexChainId }],
+    });
+    // Chain update will be picked up by useWalletEventListeners / useAutoSwitchChain
+  }, []);
+
   return {
     // Connection state
     isConnected: isEvmConnected || isSolanaConnected,
@@ -155,7 +169,10 @@ export function useWalletConnection() {
     disconnectWallet: disconnect,
     disconnectEvm,
     disconnectSolana,
-    
+
+    // EVM chain switch
+    switchChain,
+
     // Provider availability
     isMetaMaskAvailable,
     isPhantomAvailable,

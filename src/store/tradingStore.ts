@@ -1,12 +1,14 @@
 // store/tradingStore.ts
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import { getMobulaClient } from '@/lib/mobulaClient';
+import { sdk, streams } from '@/lib/sdkClient';
 import type {
   Market,
 } from '@/types/trading';
-import type { SubscriptionPayload } from '@mobula_labs/sdk';
 import { WalletV2DeployerResponse, WssFastTradesResponseType } from '@mobula_labs/types';
+
+// Stream subscription type
+type StreamSubscription = { unsubscribe: () => void };
 
 export interface DevTokenSimplified {
   name: string;
@@ -37,7 +39,7 @@ interface TradingState {
   isLoadingDevTokens: boolean;
 
   // Active subscriptions
-  activeSubscriptions: Map<keyof SubscriptionPayload, string>;
+  activeTradeSubscription: StreamSubscription | null;
 
   // Actions
   addTrade: (trade: WssFastTradesResponseType) => void;
@@ -71,7 +73,7 @@ export const useTradingStore = create<TradingState>()(
     isLoadingMarkets: false,
     isLoadingDevTokens: false,
 
-    activeSubscriptions: new Map<keyof SubscriptionPayload, string>(),
+    activeTradeSubscription: null,
 
     addTrade: (trade) =>
       set((state) => ({
@@ -87,11 +89,7 @@ export const useTradingStore = create<TradingState>()(
     fetchMarkets: async (address: string, blockchain: string) => {
       set({ isLoadingMarkets: true });
       try {
-        const client = getMobulaClient();
-        const response = await client.fetchTokenMarkets({
-          address: address,
-          blockchain,
-        });
+        const response = await sdk.fetchTokenMarkets({ address, blockchain });
 
         if (response.data) {
           const markets = response.data.map((market: any) => ({
@@ -125,8 +123,7 @@ export const useTradingStore = create<TradingState>()(
     fetchDevTokens: async (address, blockchain, page = 1, limit = 20) => {
       set({ isLoadingDevTokens: true });
       try {
-        const client = getMobulaClient();
-        const response: WalletV2DeployerResponse = await client.fetchWalletDeployer({ wallet: address, blockchain, page: String(page), limit: String(limit) });
+        const response = await sdk.fetchWalletDeployer({ wallet: address, blockchain, page: String(page), limit: String(limit) }) as WalletV2DeployerResponse;
         if (response.data) {
           const newTokens: DevTokenSimplified[] = response.data.map((token: any) => ({
             name: token.token.name,
@@ -161,27 +158,19 @@ export const useTradingStore = create<TradingState>()(
       fetchDevTokens(address, blockchain, devTokensPage + 1, devTokensLimit);
     },
 
-    // Subscribe to real-time trades
+    // Subscribe to real-time trades (streams wrapper handles server/client mode)
     subscribeToTrades: (address: string, blockchain: string) => {
-      const client = getMobulaClient();
-      const { activeSubscriptions } = get();
-
       // Unsubscribe from existing if any
-      if (activeSubscriptions.has('fast-trade')) {
-        get().unsubscribeFromTrades();
+      const { activeTradeSubscription } = get();
+      if (activeTradeSubscription) {
+        activeTradeSubscription.unsubscribe();
       }
 
       try {
-        const subscriptionId = client.streams.subscribe(
-          'fast-trade',
+        const subscription = streams.subscribeFastTrade(
           {
             assetMode: false,
-            items: [
-              {
-                blockchain: blockchain,
-                address: address
-              },
-            ],
+            items: [{ blockchain, address }],
             subscriptionTracking: true
           },
           (trade: unknown) => {
@@ -189,46 +178,30 @@ export const useTradingStore = create<TradingState>()(
           }
         );
 
-        activeSubscriptions.set('fast-trade', subscriptionId);
-        set({ activeSubscriptions: new Map(activeSubscriptions) });
+        set({ activeTradeSubscription: subscription });
       } catch (error) {
         console.error('Error subscribing to trades:', error);
       }
     },
 
     // Unsubscribe from trades
-    unsubscribeFromTrades: async () => {
-      const { activeSubscriptions } = get();
-      const subscriptionId = activeSubscriptions.get('fast-trade');
-
-      if (subscriptionId) {
-        try {
-          const client = getMobulaClient();
-          await client.streams.unsubscribe('fast-trade', subscriptionId);
-          activeSubscriptions.delete('fast-trade');
-          set({ activeSubscriptions: new Map(activeSubscriptions) });
-        } catch (error) {
-          console.error('Error unsubscribing from trades:', error);
-        }
+    unsubscribeFromTrades: () => {
+      const { activeTradeSubscription } = get();
+      if (activeTradeSubscription) {
+        activeTradeSubscription.unsubscribe();
+        set({ activeTradeSubscription: null });
       }
     },
 
     // Cleanup all subscriptions
-    cleanup: async () => {
-      const { activeSubscriptions } = get();
-      const client = getMobulaClient();
-
-      for (const [streamType, subId] of activeSubscriptions.entries()) {
-        try {
-          await client.streams.unsubscribe(streamType, subId);
-        } catch (error) {
-          console.error(`Error cleaning up subscription ${streamType}:`, error);
-        }
+    cleanup: () => {
+      const { activeTradeSubscription } = get();
+      if (activeTradeSubscription) {
+        activeTradeSubscription.unsubscribe();
       }
 
       set({
-        activeSubscriptions: new Map(),
-
+        activeTradeSubscription: null,
         trades: [],
         markets: [],
         devTokens: [],

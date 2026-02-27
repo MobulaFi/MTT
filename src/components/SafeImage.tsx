@@ -1,6 +1,9 @@
 'use client';
 import Image from 'next/image';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+
+const RETRY_DELAYS = [1500, 3000, 5000];
+const MAX_RETRIES = RETRY_DELAYS.length;
 
 interface SafeImageProps {
   src: string;
@@ -75,7 +78,9 @@ export function validateImageUrl(url: string | null | undefined): string | null 
 }
 
 /**
- * Safe Image component with automatic fallback handling
+ * Safe Image component with automatic fallback handling and retry logic.
+ * When an image fails to load (e.g. CF CDN not yet indexed), it retries
+ * with increasing delays before falling back to the placeholder.
  */
 export default function SafeImage({
   src,
@@ -86,36 +91,73 @@ export default function SafeImage({
   fill = false,
   className = '',
   fallbackSrc = '/mobula.svg',
-  quality ,
+  quality,
   priority = false,
   onLoad,
   onError: onExternalError,
 }: SafeImageProps) {
-  const [imgSrc, setImgSrc] = useState<string>(() => {
-    const validatedSrc = validateImageUrl(src);
-    return validatedSrc || fallbackSrc;
-  });
+  const validatedSrc = validateImageUrl(src);
+  const [imgSrc, setImgSrc] = useState<string>(() => validatedSrc || fallbackSrc);
   const [hasError, setHasError] = useState(false);
+  const retryCountRef = useRef(0);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const originalSrcRef = useRef(validatedSrc);
 
-  // Update imgSrc when src prop changes
+  // Update when src prop changes (e.g. WS update brings a logo)
   useEffect(() => {
-    const validatedSrc = validateImageUrl(src);
-    if (validatedSrc && validatedSrc !== imgSrc && !hasError) {
-      setImgSrc(validatedSrc);
+    const newValidated = validateImageUrl(src);
+    if (newValidated && newValidated !== originalSrcRef.current) {
+      // New source URL — reset retry state
+      originalSrcRef.current = newValidated;
+      retryCountRef.current = 0;
       setHasError(false);
-    } else if (!validatedSrc && imgSrc !== fallbackSrc) {
+      setImgSrc(newValidated);
+    } else if (!newValidated && imgSrc !== fallbackSrc) {
       setImgSrc(fallbackSrc);
     }
-  }, [src, fallbackSrc, imgSrc, hasError]);
+  }, [src, fallbackSrc, imgSrc]);
 
-  const handleError = () => {
+  // Clean up pending retry timer on unmount
+  useEffect(() => {
+    return () => {
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    };
+  }, []);
+
+  const handleLoad = useCallback(() => {
+    // Image loaded successfully — clear any pending retry
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+    setHasError(false);
+    onLoad?.();
+  }, [onLoad]);
+
+  const handleError = useCallback(() => {
+    const original = originalSrcRef.current;
+
+    if (retryCountRef.current < MAX_RETRIES && original) {
+      // Schedule a retry with cache-busting query param
+      const attempt = retryCountRef.current;
+      const delay = RETRY_DELAYS[attempt] ?? 5000;
+      retryCountRef.current = attempt + 1;
+
+      retryTimerRef.current = setTimeout(() => {
+        retryTimerRef.current = null;
+        const separator = original.includes('?') ? '&' : '?';
+        setImgSrc(`${original}${separator}_r=${attempt + 1}&_t=${Date.now()}`);
+      }, delay);
+      return;
+    }
+
+    // All retries exhausted — fall back
     if (!hasError && imgSrc !== fallbackSrc) {
-      console.warn(`Failed to load image: ${imgSrc}. Using fallback.`);
       setHasError(true);
       setImgSrc(fallbackSrc);
     }
     onExternalError?.();
-  };
+  }, [hasError, imgSrc, fallbackSrc, onExternalError]);
 
   const imageDimensions = fill
     ? { fill: true as const }
@@ -129,10 +171,10 @@ export default function SafeImage({
       sizes={sizes}
       quality={quality}
       className={className}
-      onLoad={onLoad}
+      onLoad={handleLoad}
       onError={handleError}
       priority={priority}
-      unoptimized={hasError}
+      unoptimized={hasError || retryCountRef.current > 0}
     />
   );
 }
@@ -151,24 +193,50 @@ export function SafeAvatar({
   size?: number;
   className?: string;
 }) {
-  const [imgSrc, setImgSrc] = useState<string | null>(() => validateImageUrl(src));
+  const validatedSrc = validateImageUrl(src);
+  const [imgSrc, setImgSrc] = useState<string | null>(() => validatedSrc);
   const [hasError, setHasError] = useState(false);
+  const retryCountRef = useRef(0);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const originalSrcRef = useRef(validatedSrc);
 
   useEffect(() => {
-    const validatedSrc = validateImageUrl(src);
-    if (validatedSrc && validatedSrc !== imgSrc && !hasError) {
-      setImgSrc(validatedSrc);
+    const newValidated = validateImageUrl(src);
+    if (newValidated && newValidated !== originalSrcRef.current) {
+      originalSrcRef.current = newValidated;
+      retryCountRef.current = 0;
+      setImgSrc(newValidated);
       setHasError(false);
     }
-  }, [src, imgSrc, hasError]);
+  }, [src]);
 
-  const handleError = () => {
+  useEffect(() => {
+    return () => {
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    };
+  }, []);
+
+  const handleError = useCallback(() => {
+    const original = originalSrcRef.current;
+
+    if (retryCountRef.current < MAX_RETRIES && original) {
+      const attempt = retryCountRef.current;
+      const delay = RETRY_DELAYS[attempt] ?? 5000;
+      retryCountRef.current = attempt + 1;
+
+      retryTimerRef.current = setTimeout(() => {
+        retryTimerRef.current = null;
+        const separator = original.includes('?') ? '&' : '?';
+        setImgSrc(`${original}${separator}_r=${attempt + 1}&_t=${Date.now()}`);
+      }, delay);
+      return;
+    }
+
     if (!hasError) {
-      console.warn(`Failed to load avatar: ${imgSrc}`);
       setHasError(true);
       setImgSrc(null);
     }
-  };
+  }, [hasError]);
 
   // Get initials from alt text
   const getInitials = (text: string): string => {
@@ -180,13 +248,15 @@ export function SafeAvatar({
   };
 
   if (!imgSrc || hasError) {
-    // Fallback to colored circle with initials
+    // Fallback to styled circle with initials and blue accent
     return (
       <div
-        className={`flex items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-white font-semibold ${className}`}
+        className={`flex items-center justify-center rounded-full bg-[#0a0f1a] border border-blue-500/50 ${className}`}
         style={{ width: size, height: size, fontSize: size * 0.4 }}
       >
-        {getInitials(alt)}
+        <span className="text-blue-400 font-semibold tracking-wide select-none">
+          {getInitials(alt)}
+        </span>
       </div>
     );
   }
@@ -199,6 +269,7 @@ export function SafeAvatar({
       height={size}
       className={`rounded-full ${className}`}
       onError={handleError}
+      unoptimized={retryCountRef.current > 0}
     />
   );
 }

@@ -1,11 +1,14 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import { useWalletConnectionStore } from '@/store/useWalletConnectionStore';
 import { useTradingDataStore } from '@/store/useTradingDataStore';
 import { useTradingPanelStore } from '@/store/useTradingPanelStore';
-import { getMobulaClient } from '@/lib/mobulaClient';
+import { streams } from '@/lib/sdkClient';
 import { usePathname } from 'next/navigation';
+
+// Stream subscription type
+type StreamSubscription = { unsubscribe: () => void };
 
 interface PositionData {
   data: {
@@ -45,42 +48,42 @@ interface PositionData {
 }
 
 export function useWalletPosition() {
-  const { isEvmConnected, evmAddress, isSolanaConnected, solanaAddress } = useWalletConnectionStore();
+  const evmAddress = useWalletConnectionStore((state) => state.evmAddress);
+  const solanaAddress = useWalletConnectionStore((state) => state.solanaAddress);
+  const isEvmConnected = useWalletConnectionStore((state) => state.isEvmConnected);
+  const isSolanaConnected = useWalletConnectionStore((state) => state.isSolanaConnected);
+  const isConnected = isEvmConnected || isSolanaConnected;
   const { baseToken, quoteToken } = useTradingDataStore();
   const { setSellBalance, setBuyBalance } = useTradingPanelStore();
   const pathname = usePathname();
-  const sellSubscriptionIdRef = useRef<string | null>(null);
-  const buySubscriptionIdRef = useRef<string | null>(null);
+  const sellSubscriptionRef = useRef<StreamSubscription | null>(null);
+  const buySubscriptionRef = useRef<StreamSubscription | null>(null);
 
-  // Native token addresses
-  const EVM_NATIVE_TOKEN_ADDRESS = '0xEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE';
-  const SOLANA_NATIVE_TOKEN_ADDRESS = 'So11111111111111111111111111111111111111112';
+  // Mobula uses the same native token address for all chains (including Solana)
+  const NATIVE_TOKEN_ADDRESS = '0xEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE';
 
-  // Determine which wallet is connected
-  const isConnected = isEvmConnected || isSolanaConnected;
-  const walletAddress = evmAddress || solanaAddress;
-  const isSolana = isSolanaConnected && solanaAddress;
+  // Check if blockchain is Solana (handles both "solana:solana" and "Solana" formats)
+  const isSolana = useMemo(() => {
+    const blockchain = baseToken?.blockchain?.toLowerCase() || '';
+    return blockchain.startsWith('solana') || blockchain === 'solana';
+  }, [baseToken?.blockchain]);
+
+  // Use custom wallet address based on chain type
+  const walletAddress = useMemo(() => {
+    if (isSolana) return solanaAddress || null;
+    return evmAddress || null;
+  }, [isSolana, evmAddress, solanaAddress]);
 
   useEffect(() => {
     if (!isConnected || !walletAddress) {
       // Unsubscribe if wallet disconnects
-      if (sellSubscriptionIdRef.current) {
-        const client = getMobulaClient();
-        try {
-          client.streams.unsubscribe('position', sellSubscriptionIdRef.current);
-        } catch (error) {
-          console.error('Failed to unsubscribe from sell position:', error);
-        }
-        sellSubscriptionIdRef.current = null;
+      if (sellSubscriptionRef.current) {
+        sellSubscriptionRef.current.unsubscribe();
+        sellSubscriptionRef.current = null;
       }
-      if (buySubscriptionIdRef.current) {
-        const client = getMobulaClient();
-        try {
-          client.streams.unsubscribe('position', buySubscriptionIdRef.current);
-        } catch (error) {
-          console.error('Failed to unsubscribe from buy position:', error);
-        }
-        buySubscriptionIdRef.current = null;
+      if (buySubscriptionRef.current) {
+        buySubscriptionRef.current.unsubscribe();
+        buySubscriptionRef.current = null;
       }
       return;
     }
@@ -113,27 +116,17 @@ export function useWalletPosition() {
     // Subscribe to sell balance (baseToken position)
     if (sellTokenAddress && sellBlockchain) {
       // Unsubscribe from previous sell subscription if exists
-      if (sellSubscriptionIdRef.current) {
-        const client = getMobulaClient();
-        try {
-          client.streams.unsubscribe('position', sellSubscriptionIdRef.current);
-        } catch (error) {
-          console.error('Failed to unsubscribe from previous sell position:', error);
-        }
-        sellSubscriptionIdRef.current = null;
+      if (sellSubscriptionRef.current) {
+        sellSubscriptionRef.current.unsubscribe();
+        sellSubscriptionRef.current = null;
       }
 
-      const client = getMobulaClient();
-      const sellSubscriptionId = `position-sell-${walletAddress}-${sellTokenAddress}-${Date.now()}`;
-
       try {
-        const actualSubscriptionId = client.streams.subscribe(
-          'position',
+        sellSubscriptionRef.current = streams.subscribePosition(
           {
             wallet: walletAddress,
             token: sellTokenAddress,
-            blockchain: sellBlockchain as never,
-            subscriptionId: sellSubscriptionId,
+            blockchain: sellBlockchain,
             subscriptionTracking: true,
           },
           (data: unknown) => {
@@ -144,42 +137,37 @@ export function useWalletPosition() {
             }
           }
         );
-
-        sellSubscriptionIdRef.current = actualSubscriptionId || sellSubscriptionId;
       } catch (error) {
         console.error('Failed to subscribe to sell position:', error);
       }
     }
 
-    // Subscribe to buy balance (native token position)
-    // Always use native token address
+    // Subscribe to buy balance (native token: SOL for Solana, ETH for EVM)
+    // Uses UA address from Account Abstraction
     const blockchain = baseToken?.blockchain || quoteToken?.blockchain;
-    if (blockchain) {
+    if (blockchain && walletAddress) {
       // Unsubscribe from previous buy subscription if exists
-      if (buySubscriptionIdRef.current) {
-        const client = getMobulaClient();
-        try {
-          client.streams.unsubscribe('position', buySubscriptionIdRef.current);
-        } catch (error) {
-          console.error('Failed to unsubscribe from previous buy position:', error);
-        }
-        buySubscriptionIdRef.current = null;
+      if (buySubscriptionRef.current) {
+        buySubscriptionRef.current.unsubscribe();
+        buySubscriptionRef.current = null;
       }
 
-      // Use appropriate native token address based on chain
-      const nativeTokenAddress = isSolana ? SOLANA_NATIVE_TOKEN_ADDRESS : EVM_NATIVE_TOKEN_ADDRESS;
+      // Use native token address (same for all chains in Mobula)
+      const nativeTokenAddress = NATIVE_TOKEN_ADDRESS;
 
-      const client = getMobulaClient();
-      const buySubscriptionId = `position-buy-${walletAddress}-${nativeTokenAddress}-${Date.now()}`;
+      console.log('[WalletPosition] Subscribing to buy balance with UA address:', {
+        wallet: walletAddress,
+        token: nativeTokenAddress,
+        blockchain,
+        isSolana,
+      });
 
       try {
-        const actualSubscriptionId = client.streams.subscribe(
-          'position',
+        buySubscriptionRef.current = streams.subscribePosition(
           {
             wallet: walletAddress,
             token: nativeTokenAddress,
-            blockchain: blockchain as never,
-            subscriptionId: buySubscriptionId,
+            blockchain: blockchain,
             subscriptionTracking: true,
           },
           (data: unknown) => {
@@ -187,11 +175,10 @@ export function useWalletPosition() {
             if (positionData?.data?.balance !== undefined) {
               // Update buy balance with native token position balance
               setBuyBalance(positionData.data.balance.toString());
+              console.log('[WalletPosition] Buy balance updated:', positionData.data.balance);
             }
           }
         );
-
-        buySubscriptionIdRef.current = actualSubscriptionId || buySubscriptionId;
       } catch (error) {
         console.error('Failed to subscribe to buy position:', error);
       }
@@ -199,23 +186,13 @@ export function useWalletPosition() {
 
     // Cleanup on unmount or dependency change
     return () => {
-      if (sellSubscriptionIdRef.current) {
-        const client = getMobulaClient();
-        try {
-          client.streams.unsubscribe('position', sellSubscriptionIdRef.current);
-        } catch (error) {
-          console.error('Failed to unsubscribe from sell position on cleanup:', error);
-        }
-        sellSubscriptionIdRef.current = null;
+      if (sellSubscriptionRef.current) {
+        sellSubscriptionRef.current.unsubscribe();
+        sellSubscriptionRef.current = null;
       }
-      if (buySubscriptionIdRef.current) {
-        const client = getMobulaClient();
-        try {
-          client.streams.unsubscribe('position', buySubscriptionIdRef.current);
-        } catch (error) {
-          console.error('Failed to unsubscribe from buy position on cleanup:', error);
-        }
-        buySubscriptionIdRef.current = null;
+      if (buySubscriptionRef.current) {
+        buySubscriptionRef.current.unsubscribe();
+        buySubscriptionRef.current = null;
       }
     };
   }, [isConnected, walletAddress, isSolana, baseToken, quoteToken, pathname, setSellBalance, setBuyBalance]);

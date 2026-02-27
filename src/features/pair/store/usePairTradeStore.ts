@@ -45,6 +45,7 @@ interface IPairStore {
   filterModalState: FilterModalType;
   mobileSection: MobileSection;
   orderBy: 'desc' | 'asc';
+  isTradesPaused: boolean;
   updateOrderBy: (value: 'desc' | 'asc') => void;
   setMobileSection: (value: MobileSection) => void;
   updateFilterModal: (modal: Partial<FilterModalType> | null) => void;
@@ -53,6 +54,7 @@ interface IPairStore {
   updateTrades: (value: Transaction[] | ((prev: Transaction[]) => Transaction[])) => void;
   updateFilters: (filterType: 'type' | 'usd' | 'base' | 'quote', value: number[] | number) => void;
   getFilteredTrades: (trades: Transaction[]) => Transaction[];
+  setTradesPaused: (paused: boolean) => void;
 }
 
 const MAX_TRADES = 100; // Limit trades to prevent memory bloat
@@ -64,6 +66,7 @@ export const usePairTradeStore = create<IPairStore>()(
       trades: [],
       orderBy: 'desc',
       mobileSection: MobileSection.INFO,
+      isTradesPaused: false,
       filterModalState: {
         genericType: null,
         exactType: null,
@@ -96,6 +99,11 @@ export const usePairTradeStore = create<IPairStore>()(
       updateOrderBy: (value) => {
         set((state) => {
           state.orderBy = value;
+        });
+      },
+      setTradesPaused: (paused) => {
+        set((state) => {
+          state.isTradesPaused = paused;
         });
       },
       getFilteredTrades: (trades) => {

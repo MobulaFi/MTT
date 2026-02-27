@@ -17,6 +17,13 @@ type WssPulseV2ResponseType =
         viewName: string;
         token: PulseToken;
       };
+    }
+  | {
+      type: 'new-token';
+      payload: {
+        viewName: string;
+        token: PulseToken;
+      };
     };
 
 export interface PulseV2StoreState {

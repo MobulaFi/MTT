@@ -2,10 +2,11 @@
 import { useEffect, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { ApiSelectorDropdown } from './header/ApiSelectorDropdown';
-
+import { WalletConnectButton } from './header/WalletConnectButton';
 
 const SearchModal = dynamic(() => import('./SearchModal').then(mod => ({ default: mod.SearchModal })), { ssr: false });
 const NetworkDebuggerModal = dynamic(() => import('./NetworkDebuggerModal').then(mod => ({ default: mod.NetworkDebuggerModal })), { ssr: false });
+const ConnectWalletModal = dynamic(() => import('./header/ConnectWalletModal').then(mod => ({ default: mod.ConnectWalletModal })), { ssr: false });
 
 import { Plus_Jakarta_Sans } from 'next/font/google';
 import { FiSearch } from 'react-icons/fi';
@@ -30,7 +31,7 @@ const Header = () => {
   const latencyIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const pathname = usePathname();
 
-  const { currentUrl, getLabelForUrl } = useApiStore();
+  const { currentUrl, getLabelForUrl, apiKeySource, serverDisplayLabel, serverLatency, setServerDisplayInfo } = useApiStore();
 
   
   
@@ -76,15 +77,46 @@ const Header = () => {
     }
   }, [currentUrl, setLatency]);
 
-  // Periodically check latency
+  // When Server is selected but no display info (e.g. after refresh), fetch server config for header
   useEffect(() => {
+    if (apiKeySource !== 'server' || serverDisplayLabel != null) return;
+    let cancelled = false;
+    setServerDisplayInfo('Server (env)', '...');
+    fetch('/api/mobula-server-config', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((data: { restUrl: string }) => {
+        if (cancelled) return;
+        const start = performance.now();
+        fetch(data.restUrl, { method: 'GET', cache: 'no-cache' })
+          .then(() => {
+            if (cancelled) return;
+            const ms = Math.round(performance.now() - start);
+            setServerDisplayInfo('Server (env)', `${ms}ms`);
+          })
+          .catch(() => {
+            if (cancelled) return;
+            setServerDisplayInfo('Server (env)', 'error');
+          });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setServerDisplayInfo('Server (env)', 'error');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiKeySource, serverDisplayLabel, setServerDisplayInfo]);
+
+  // Periodically check latency (client mode only; server mode uses dropdown value)
+  useEffect(() => {
+    if (apiKeySource === 'server') return;
     checkLatency();
     latencyIntervalRef.current = setInterval(checkLatency, 10000);
 
     return () => {
       if (latencyIntervalRef.current) clearInterval(latencyIntervalRef.current);
     };
-  }, [checkLatency]);
+  }, [checkLatency, apiKeySource]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -193,6 +225,10 @@ const Header = () => {
             </button>
 
             <div className="flex-shrink-0">
+              <WalletConnectButton />
+            </div>
+
+            <div className="flex-shrink-0">
             <LatencyIndicator
               currentUrl={currentUrl}
               latency={latency}
@@ -200,6 +236,8 @@ const Header = () => {
               toggleSelector={toggleApiSelector}
               buttonRef={apiButtonRef}
               getLabelForUrl={getLabelForUrl}
+              displayLabel={apiKeySource === 'server' ? serverDisplayLabel : undefined}
+              displayLatency={apiKeySource === 'server' ? serverLatency : undefined}
             />
             </div>
           </div>
@@ -218,6 +256,10 @@ const Header = () => {
       <NetworkDebuggerModal
         isOpen={isNetworkDebuggerOpen}
         onClose={closeNetworkDebugger}
+      />
+      <ConnectWalletModal
+        isOpen={isWalletModalOpen}
+        onClose={closeWalletModal}
       />
     </>
   );

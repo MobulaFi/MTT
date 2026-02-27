@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
-import { getMobulaClient } from '@/lib/mobulaClient';
+import { useEffect, useCallback, useRef } from 'react';
+import { sdk } from '@/lib/sdkClient';
 import { useWalletPortfolioStore } from '@/store/useWalletPortfolioStore';
 
 export function useWalletPortfolio(walletAddress?: string, blockchain?: string) {
@@ -11,13 +11,20 @@ export function useWalletPortfolio(walletAddress?: string, blockchain?: string) 
     setLoading,
     setActivePositionData,
     setWalletActivity,
+    setWalletHistory,
+    setHistoryLoading,
+    setActivityLoading,
+    setActivityError,
     reset,
     data,
     activePositionData,
     walletActivity,
+    walletHistory,
     isLoading,
     error,
   } = useWalletPortfolioStore();
+
+  const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     if (!walletAddress || !blockchain) return;
@@ -25,21 +32,20 @@ export function useWalletPortfolio(walletAddress?: string, blockchain?: string) 
     const fetchWalletData = async () => {
       try {
         setLoading(true);
-        const client = getMobulaClient();
 
         const [portfolioRes, positionsRes, walletActivityRes] = await Promise.all([
-          client.fetchWalletPortfolio({
+          sdk.fetchWalletPortfolio({
             wallet: walletAddress,
             blockchains: blockchain,
           }),
-          client.fetchWalletPositions({
+          sdk.fetchWalletPositions({
             wallet: walletAddress,
             blockchain,
           }),
-          client.fetchWalletActivity({
+          sdk.fetchWalletActivity({
             wallet: walletAddress,
             blockchains: blockchain,
-            limit:100
+            limit: 100
           }),
         ]);
 
@@ -57,6 +63,10 @@ export function useWalletPortfolio(walletAddress?: string, blockchain?: string) 
     fetchWalletData();
     return () => {
       reset();
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
     };
   }, [
     walletAddress,
@@ -69,5 +79,68 @@ export function useWalletPortfolio(walletAddress?: string, blockchain?: string) 
     reset,
   ]);
 
-  return { data, activePositionData, walletActivity , isLoading, error };
+  const fetchWalletHistoryData = useCallback(async (days: number, fromTimestamp?: number, toTimestamp?: number) => {
+    if (!walletAddress || !blockchain) return;
+    
+    try {
+      setHistoryLoading(true);
+      const response = await sdk.fetchWalletHistory({
+        wallet: walletAddress,
+        blockchains: blockchain,
+        from: fromTimestamp?.toString(),
+        to: toTimestamp?.toString(),
+      });
+      
+      if (response?.data?.balance_history) {
+        const historyData = response.data.balance_history.map(([timestamp, value]) => ({
+          date: new Date(timestamp).toISOString(),
+          value,
+        }));
+        setWalletHistory(historyData);
+      }
+    } catch (err) {
+      console.error('Error fetching wallet history:', err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [walletAddress, blockchain, setHistoryLoading, setWalletHistory]);
+
+  const refetchActivity = useCallback(async (filters?: { from?: number; to?: number; order?: 'asc' | 'desc' }) => {
+    if (!walletAddress || !blockchain) return;
+    
+    try {
+      setActivityLoading(true);
+      const response = await sdk.fetchWalletActivity({
+        wallet: walletAddress,
+        blockchains: blockchain,
+        limit: 100,
+        ...filters,
+      });
+      setWalletActivity(response);
+    } catch (err) {
+      console.error('Error refetching activity:', err);
+      setActivityError(err instanceof Error ? err.message : 'Failed to refetch activity');
+    } finally {
+      setActivityLoading(false);
+    }
+  }, [walletAddress, blockchain, setActivityLoading, setWalletActivity, setActivityError]);
+
+  const closeWebSocket = useCallback(() => {
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+  }, []);
+
+  return { 
+    data, 
+    activePositionData, 
+    walletActivity,
+    walletHistory,
+    isLoading, 
+    error,
+    fetchWalletHistoryData,
+    refetchActivity,
+    closeWebSocket,
+  };
 }

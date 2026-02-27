@@ -6,6 +6,7 @@ import { Footer } from '@/components/Footer';
 import { Toaster } from "@/components/ui/sonner"
 import { EIP6963Initializer } from '@/components/wallet/EIP6963Initializer';
 import { WalletPortfolioModalWrapper } from '@/components/shared/WalletPortfolioModalWrapper';
+import { NetworkAutoSwitcher } from '@/components/providers/NetworkAutoSwitcher';
 
 export const metadata = {
   title: 'Mobula Trading Terminal',
@@ -41,20 +42,21 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         />
       </head>
       <body className="font-menlo w-full bg-bgPrimary text-foreground" suppressHydrationWarning>
+        <NetworkAutoSwitcher />
         <EIP6963Initializer />
         <Toaster />
-          <div className="flex flex-col min-h-screen relative">
-            <header className="sticky top-0 z-50">
-              <Header />
-            </header>
-            <main className="flex-1 overflow-y-auto">
-              {children}
-            </main>
-            <footer className="sticky bottom-0 z-50">
-              <Footer />
-            </footer>
-          </div>
-          <WalletPortfolioModalWrapper />
+        <div className="flex flex-col min-h-screen relative">
+          <header className="sticky top-0 z-50">
+            <Header />
+          </header>
+          <main className="flex-1 overflow-y-auto flex flex-col">
+            {children}
+          </main>
+          <footer className="sticky bottom-0 z-50">
+            <Footer />
+          </footer>
+        </div>
+        <WalletPortfolioModalWrapper />
       </body>
     </html>
   );

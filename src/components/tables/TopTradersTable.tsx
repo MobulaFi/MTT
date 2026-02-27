@@ -4,7 +4,7 @@ import {
   formatPercentage,
   buildExplorerUrl,
 } from '@mobula_labs/sdk';
-import { ExternalLink, Funnel, X } from 'lucide-react';
+import { ExternalLink, Filter, X, Building2 } from 'lucide-react';
 import { useWalletModalStore } from '@/store/useWalletModalStore';
 import {
   Tooltip,
@@ -16,6 +16,60 @@ import { HOLDER_TAG_ICONS } from '@/assets/icons/HolderTags';
 import { HoldersTableSkeleton } from '../skeleton';
 import { PriceDisplay } from '../PriceDisplay';
 import { useTopTradersData } from '@/hooks/useTopTraderData';
+
+// Wallet metadata type from API
+interface WalletMetadata {
+  entityName: string | null;
+  entityLogo: string | null;
+  entityLabels: string[];
+}
+
+// Component to display wallet entity info (CEX, market maker, etc.)
+function WalletEntityBadge({ metadata, compact = false }: { metadata?: WalletMetadata | null; compact?: boolean }) {
+  if (!metadata?.entityName) return null;
+  
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/30 ${
+          compact ? 'text-[8px]' : 'text-[9px]'
+        } font-semibold text-amber-400`}>
+          {metadata.entityLogo ? (
+            <img 
+              src={metadata.entityLogo} 
+              width={compact ? 10 : 12} 
+              height={compact ? 10 : 12} 
+              alt="" 
+              className="rounded-full"
+            />
+          ) : (
+            <Building2 size={compact ? 10 : 12} />
+          )}
+          {!compact && metadata.entityName}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="text-[10px]">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1.5">
+            {metadata.entityLogo && (
+              <img src={metadata.entityLogo} width={14} height={14} alt="" className="rounded-full" />
+            )}
+            <span className="font-semibold text-white">{metadata.entityName}</span>
+          </div>
+          {metadata.entityLabels.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-0.5">
+              {metadata.entityLabels.map((label) => (
+                <span key={label} className="px-1 py-0.5 bg-bgTertiary rounded text-[9px] text-grayGhost">
+                  {label}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 
 interface TopTradersTableProps {
@@ -31,6 +85,7 @@ const headers = [
   { label: 'Wallet Balance', align: 'text-left', width: 'w-[100px]' },
   { label: 'Bought', align: 'text-left', width: 'w-[100px]' },
   { label: 'Sold', align: 'text-left', width: 'w-[100px]' },
+  { label: 'Platform', align: 'text-left', width: 'w-[90px]' },
   { label: 'Remaining', align: 'text-left', width: 'w-[120px]' },
   { label: 'Unrealized PNL', align: 'text-right', width: 'w-[120px] pr-5' },
 ];
@@ -114,7 +169,7 @@ export function TopTradersTable({
                       <td></td>
                       <td className="text-left whitespace-nowrap">
                         <div className="inline-flex items-start justify-center space-x-2">
-                          <Funnel
+                          <Filter
                             color={'#777A8C'}
                             size={13}
                             className="cursor-pointer hover:opacity-70 transition-opacity"
@@ -156,6 +211,11 @@ export function TopTradersTable({
                               mode: 'middle',
                             })}
                           </span>
+
+                          {/* Wallet Entity (CEX, Market Maker, etc.) */}
+                          <WalletEntityBadge 
+                            metadata={(trader as typeof trader & { walletMetadata?: WalletMetadata }).walletMetadata} 
+                          />
 
                           {trader.labels && trader.labels.length > 0 && (
                             <div className="flex items-center space-x-1">
@@ -219,6 +279,29 @@ export function TopTradersTable({
 
                       <td className="text-left font-normal text-xs leading-[16px] tracking-normal align-middle text-white">
                         <PriceDisplay usdAmount={trader.volumeSellUSD} />
+                      </td>
+
+                      {/* Platform */}
+                      <td className="text-left px-2">
+                        {(() => {
+                          const platform = (trader as typeof trader & { platform?: { id?: string; name?: string; logo?: string } }).platform;
+                          return platform?.name ? (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-bgTertiary text-[10px] font-medium text-white">
+                              {platform.logo && (
+                                <img 
+                                  src={platform.logo} 
+                                  width={12} 
+                                  height={12} 
+                                  alt={platform.name || ''} 
+                                  className="rounded-full"
+                                />
+                              )}
+                              {platform.name}
+                            </span>
+                          ) : (
+                            <span className="text-grayGhost">—</span>
+                          );
+                        })()}
                       </td>
 
                       <td>

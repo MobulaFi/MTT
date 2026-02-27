@@ -1,11 +1,11 @@
 "use client";
 
-import { ArrowUpDown, ExternalLink, Funnel, RefreshCcwDot } from "lucide-react";
+import { ArrowUpDown, ExternalLink, Filter, RefreshCcwDot } from "lucide-react";
 import { FormattedTokenTradesResponse } from "@mobula_labs/types";
 import { usePairTradeStore, type Transaction as StoreTransaction } from "@/features/pair/store/usePairTradeStore";
 import { useEffect, useState, useCallback, useMemo, useRef, memo } from "react";
-import { getMobulaClient } from "@/lib/mobulaClient";
-import { formatPureNumber, truncate, buildExplorerUrl } from "@mobula_labs/sdk";
+import { sdk } from "@/lib/sdkClient";
+import { formatPureNumber, buildExplorerUrl } from "@mobula_labs/sdk";
 import { TradeTimeCell } from "../ui/tradetimecell";
 import { TradeTimeHeader } from "../ui/tradetimeheader";
 import { TradeValueBar } from "../ui/tradevaluebar";
@@ -19,6 +19,7 @@ import { HOLDER_TAG_ICONS } from "@/assets/icons/HolderTags";
 import SafeImage from "@/components/SafeImage";
 import { useWalletDisplayName } from "@/hooks/useWalletDisplayName";
 import { useRenderCounter } from "@/utils/useRenderCounter";
+import { TraderTooltip } from "./TraderTooltip";
 
 type Transaction = FormattedTokenTradesResponse["data"][number];
 
@@ -85,7 +86,6 @@ function FormattedAmount({
   );
 }
 
-
 function TradeLabels({ labels, compact = false }: { labels: string[]; compact?: boolean }) {
   if (!labels || labels.length === 0) return null;
 
@@ -145,10 +145,21 @@ interface TradesTableProps {
   isLoading?: boolean;
   compact?: boolean;
   showCurrencyToggle?: boolean;
+  assetAddress?: string;
 }
 
 // Trader cell component to display emoji + nickname or first 3 chars
-function TraderCell({ address, compact = false }: { address: string; compact?: boolean }) {
+function TraderCell({
+  address,
+  compact = false,
+  blockchain,
+  assetAddress,
+}: {
+  address: string;
+  compact?: boolean;
+  blockchain?: string;
+  assetAddress?: string | null;
+}) {
   const display = useWalletDisplayName(address);
   
   // Determine display text based on mode
@@ -158,8 +169,7 @@ function TraderCell({ address, compact = false }: { address: string; compact?: b
   
   // Only show emoji if it's been customized (not the default ghost)
   const hasCustomEmoji = display.emoji !== '👻';
-  
-  return (
+  const content = (
     <span className="inline-flex items-center gap-0.5 sm:gap-1 truncate">
       {hasCustomEmoji && (
         <span className={compact ? "text-[10px] sm:text-xs" : "text-xs sm:text-sm"}>
@@ -169,6 +179,21 @@ function TraderCell({ address, compact = false }: { address: string; compact?: b
       <span className="truncate">{displayText}</span>
     </span>
   );
+
+  if (!blockchain || !assetAddress) {
+    return content;
+  }
+
+  return (
+    <TraderTooltip
+      wallet={address}
+      blockchain={blockchain}
+      assetAddress={assetAddress}
+      walletDisplay={display}
+    >
+      {content}
+    </TraderTooltip>
+  );
 }
 
 // Memoized trade row component for compact mode to prevent unnecessary re-renders
@@ -177,13 +202,15 @@ const CompactTradeRow = memo(({
   maxAmount, 
   displayCurrency, 
   quoteCurrencySymbol,
-  onWalletClick 
+  onWalletClick,
+  assetAddress
 }: { 
   trade: Transaction;
   maxAmount: number;
   displayCurrency: string;
   quoteCurrencySymbol: string;
   onWalletClick: (wallet: string, txHash: string, blockchain: string) => void;
+  assetAddress?: string | null;
 }) => {
   const isBuy = trade.type.toLowerCase() === "buy" || trade.type.toLowerCase() === "deposit";
   const value = +trade.tokenAmountUsd;
@@ -226,7 +253,7 @@ const CompactTradeRow = memo(({
         className="text-left font-medium text-[10px] sm:text-xs text-grayGhost cursor-pointer hover:text-textPrimary pl-2 sm:pl-3"
         onClick={() => onWalletClick(trade.sender, trade.hash, trade.blockchain)}
       >
-        <TraderCell address={trade.sender} compact={true} />
+        <TraderCell address={trade.sender} compact={true} blockchain={trade.blockchain} assetAddress={assetAddress} />
       </td>
       <td className="pr-2 sm:pr-3">
         <div className="flex items-center justify-end gap-0.5 sm:gap-1">
@@ -266,7 +293,8 @@ const TradeRow = memo(({
   showAbsoluteTime,
   onWalletClick,
   currentWalletFilter,
-  onToggleWalletFilter
+  onToggleWalletFilter,
+  assetAddress
 }: {
   trade: Transaction;
   maxAmount: number;
@@ -275,6 +303,7 @@ const TradeRow = memo(({
   onWalletClick: (wallet: string, txHash: string, blockchain: string) => void;
   currentWalletFilter?: string;
   onToggleWalletFilter: (wallet: string) => void;
+  assetAddress?: string | null;
 }) => {
   return (
     <tr
@@ -312,7 +341,7 @@ const TradeRow = memo(({
             onClick={() => onWalletClick(trade.sender, trade.hash, trade.blockchain)}
             className="cursor-pointer px-0.5 sm:px-1 md:px-2 font-medium text-[10px] sm:text-xs text-grayGhost hover:text-textPrimary hover:underline underline-offset-2"
           >
-            <TraderCell address={trade.sender} compact={false} />
+            <TraderCell address={trade.sender} compact={false} blockchain={trade.blockchain} assetAddress={assetAddress} />
           </span>
           {buildExplorerUrl(trade.blockchain, "tx", trade.hash) && (
             <a
@@ -323,7 +352,7 @@ const TradeRow = memo(({
               <ExternalLink color="#777A8C" size={11} className="sm:w-[13px] sm:h-[13px]" />
             </a>
           )}
-          <Funnel
+          <Filter
             color={currentWalletFilter === trade.sender ? "#B84FFF" : "#777A8C"}
             onClick={() => onToggleWalletFilter(trade.sender)}
             size={11}
@@ -358,6 +387,7 @@ const TradesTableComponent = ({
   isLoading,
   compact = false,
   showCurrencyToggle = false,
+  assetAddress,
 }: TradesTableProps) => {
   // Render counter for diagnostics
   useRenderCounter('TradesTable');
@@ -365,6 +395,7 @@ const TradesTableComponent = ({
   // Use granular selectors with shallow comparison to prevent unnecessary re-renders
   const orderBy = usePairTradeStore((s) => s.orderBy);
   const updateOrderBy = usePairTradeStore((s) => s.updateOrderBy);
+  const setTradesPaused = usePairTradeStore((s) => s.setTradesPaused);
   
   // CRITICAL: Subscribe to trades directly from store, not from props
   // This allows TradesTable to update independently without triggering parent re-renders
@@ -409,6 +440,7 @@ const TradesTableComponent = ({
   const currencyLabel = displayCurrency === 'QUOTE' ? quoteCurrencySymbol : 'USD';
 
   const loaderRef = useRef<HTMLDivElement | null>(null);
+  const resolvedAssetAddress = assetAddress ?? pair?.address ?? null;
 
   useEffect(() => {
     setOffset(0);
@@ -416,13 +448,25 @@ const TradesTableComponent = ({
     setIsLoadingTrades(false);
   }, [pair?.address, pair?.blockchain]);
 
+  useEffect(() => {
+    return () => {
+      setTradesPaused(false);
+    };
+  }, [setTradesPaused]);
+  const handlePanelPointerEnter = useCallback(() => {
+    setTradesPaused(true);
+  }, [setTradesPaused]);
+
+  const handlePanelPointerLeave = useCallback(() => {
+    setTradesPaused(false);
+  }, [setTradesPaused]);
+
   // Fetch trades - reset when filters change
   const fetchTrades = useCallback(async () => {
     if (!pair?.address || !pair?.blockchain) return;
     setIsLoadingTrades(true);
     try {
-      const client = getMobulaClient();
-      const response = (await client.fetchTokenTrades({
+      const response = (await sdk.fetchTokenTrades({
         address: pair.address,
         blockchain: pair.blockchain,
         limit: 100,
@@ -556,7 +600,11 @@ const TradesTableComponent = ({
     <TooltipProvider>
       {/* Compact Mode */}
       {compact ? (
-        <div className="w-full h-full overflow-y-auto scrollbar-thin scrollbar-thumb-[#22242D] scrollbar-track-transparent hover:scrollbar-thumb-[#343439]">
+        <div
+          className="w-full h-full overflow-y-auto scrollbar-thin scrollbar-thumb-[#22242D] scrollbar-track-transparent hover:scrollbar-thumb-[#343439]"
+          onPointerEnter={handlePanelPointerEnter}
+          onPointerLeave={handlePanelPointerLeave}
+        >
           <table className="w-full text-[10px] sm:text-xs bg-bgPrimary border-collapse table-fixed">
             <thead className="sticky top-0 z-10 h-6 sm:h-7 bg-bgPrimary hover:bg-bgPrimary border-b border-borderDefault text-grayGhost shadow-sm">
               <tr>
@@ -588,6 +636,7 @@ const TradesTableComponent = ({
                   displayCurrency={displayCurrency}
                   quoteCurrencySymbol={quoteCurrencySymbol}
                   onWalletClick={handleWalletClick}
+                  assetAddress={resolvedAssetAddress}
                 />
               ))}
             </tbody>
@@ -595,7 +644,11 @@ const TradesTableComponent = ({
         </div>
       ) : (
         // Full table mode
-        <div className="w-full h-full overflow-y-auto overflow-x-auto scrollbar-thin scrollbar-thumb-[#22242D] scrollbar-track-transparent hover:scrollbar-thumb-[#343439]">
+        <div
+          className="w-full h-full overflow-y-auto overflow-x-auto scrollbar-thin scrollbar-thumb-[#22242D] scrollbar-track-transparent hover:scrollbar-thumb-[#343439]"
+          onPointerEnter={handlePanelPointerEnter}
+          onPointerLeave={handlePanelPointerLeave}
+        >
           <table className="min-w-[400px] w-full text-[10px] sm:text-xs bg-bgPrimary border-collapse table-fixed">
             <thead className="sticky top-0 z-20 h-7 sm:h-8 hover:bg-bgPrimary bg-bgPrimary border-b border-borderDefault text-grayGhost shadow-sm">
               <tr>
@@ -644,6 +697,7 @@ const TradesTableComponent = ({
                   onWalletClick={handleWalletClick}
                   currentWalletFilter={currentFilters.wallet}
                   onToggleWalletFilter={handleToggleWalletFilter}
+                  assetAddress={resolvedAssetAddress}
                 />
               ))}
             </tbody>
@@ -672,6 +726,7 @@ export const TradesTable = memo(TradesTableComponent, (prevProps, nextProps) => 
     prevProps.compact === nextProps.compact &&
     prevProps.showCurrencyToggle === nextProps.showCurrencyToggle &&
     prevProps.isLoading === nextProps.isLoading &&
+    prevProps.assetAddress === nextProps.assetAddress &&
     prevTradesLength === nextTradesLength &&
     prevFirstHash === nextFirstHash
   );

@@ -2,11 +2,8 @@
 
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { usePairTradeStore, type Transaction } from '@/features/pair/store/usePairTradeStore';
-import { getMobulaClient } from '@/lib/mobulaClient';
+import { streams } from '@/lib/sdkClient';
 import { UpdateBatcher } from '@/utils/UpdateBatcher';
-import { shallow } from 'zustand/shallow';
-
-const getClient = () => getMobulaClient();
 
 interface CombinedTradesParams {
   address: string;
@@ -69,10 +66,7 @@ export const useCombinedTrades = ({
     seenHashesRef.current.clear();
     tradeBatcherRef.current.clear();
 
-    const client = getClient();
-
-    const subscriptionId = client.streams.subscribe(
-      'fast-trade',
+    const subscription = streams.subscribeFastTrade(
       {
         assetMode: !isPair,
         items: [{ blockchain, address }],
@@ -98,7 +92,7 @@ export const useCombinedTrades = ({
     );
 
     return () => {
-      client.streams.unsubscribe('fast-trade', subscriptionId);
+      subscription.unsubscribe();
       tradeBatcherRef.current.clear();
     };
   }, [address, blockchain, isPair, updateTrades, clearTrades]);

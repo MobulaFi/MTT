@@ -68,6 +68,7 @@ export default async function EmbedTokenPage({ params, searchParams }: EmbedToke
     blockchain,
     symbol: tokenData.symbol ?? undefined,
     priceUSD: tokenData.priceUSD,
+    circulatingSupply: tokenData.circulatingSupply ?? tokenData.totalSupply ?? 0,
   };
 
   return (
@@ -82,6 +83,9 @@ export default async function EmbedTokenPage({ params, searchParams }: EmbedToke
           backgroundColor={embedConfig.bgColor}
           candleUpColor={embedConfig.candleUpColor}
           candleDownColor={embedConfig.candleDownColor}
+          deployer={tokenData.deployer ?? undefined}
+          showSymbol={embedConfig.showSymbol}
+          showGridLines={embedConfig.showGridLines}
         />
         </div>
         <EmbedBranding bgColor={embedConfig.bgColor} />

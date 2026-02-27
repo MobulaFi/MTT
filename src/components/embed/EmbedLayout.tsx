@@ -48,6 +48,8 @@ function EmbedBodyStyles({ config }: { config: EmbedConfig }) {
       root.style.setProperty('--tv-color-item-active-text', '#18C722');
       root.style.setProperty('--tv-color-toolbar-toggle-button-background-active', '#f3f4f6');
       root.style.setProperty('--tv-color-toolbar-toggle-button-background-active-hover', '#e5e7eb');
+      root.style.setProperty('--tv-color-toolbar-bg', '#ffffff');
+      root.style.setProperty('--tv-color-side-toolbar-bg', '#ffffff');
     } else {
       root.style.setProperty('--tv-color-platform-background', '#121319');
       root.style.setProperty('--tv-color-pane-background', '#121319');
@@ -62,6 +64,8 @@ function EmbedBodyStyles({ config }: { config: EmbedConfig }) {
       root.style.setProperty('--tv-color-item-active-text', '#18C722');
       root.style.setProperty('--tv-color-toolbar-toggle-button-background-active', '#1a1c23');
       root.style.setProperty('--tv-color-toolbar-toggle-button-background-active-hover', '#1a1c23');
+      root.style.setProperty('--tv-color-toolbar-bg', '#121319');
+      root.style.setProperty('--tv-color-side-toolbar-bg', '#121319');
     }
     
     // Cleanup on unmount
@@ -96,6 +100,8 @@ function EmbedBodyStyles({ config }: { config: EmbedConfig }) {
       root.style.removeProperty('--tv-color-item-active-text');
       root.style.removeProperty('--tv-color-toolbar-toggle-button-background-active');
       root.style.removeProperty('--tv-color-toolbar-toggle-button-background-active-hover');
+      root.style.removeProperty('--tv-color-toolbar-bg');
+      root.style.removeProperty('--tv-color-side-toolbar-bg');
     };
   }, [config.bgColor]);
 

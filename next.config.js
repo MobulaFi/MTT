@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  transpilePackages: ['@mobula/sdk', '@mobula/types'],
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -12,7 +13,6 @@ const nextConfig = {
     contentDispositionType: 'attachment',
     contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
     formats: ['image/avif', 'image/webp'],
-    qualities: [70, 90], 
   },
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production' ? {

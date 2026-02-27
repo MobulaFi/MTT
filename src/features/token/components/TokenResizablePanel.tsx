@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useEffect, useCallback, memo } from 'react';
-import { Settings2, Funnel } from 'lucide-react';
+import { Settings2, Filter } from 'lucide-react';
 import TradingViewChart from '@/components/charts';
 import { TradesTable } from '@/components/tables/TradesTable';
 import { HoldersTable } from '@/components/tables/HoldersTable';
@@ -80,7 +80,7 @@ const TradesActions = memo(({
           }`}
         onClick={onToggleDevFilter}
       >
-        <Funnel size={13} className={isDevFilterActive ? 'text-white' : 'text-textPrimary'} />
+        <Filter size={13} className={isDevFilterActive ? 'text-white' : 'text-textPrimary'} />
         <span>DEV</span>
       </button>
     )}
@@ -191,8 +191,9 @@ function TokenResizablePanelsComponent({
       pair={{ address: address, blockchain }}
       storeTrades={[]} // Empty array - TradesTable will use store directly
       isPair={false}
+      assetAddress={tokenData.address}
     />
-  ), [address, blockchain]); // NO tradesHook.wsTrades dependency!
+  ), [address, blockchain, tokenData.address]); // NO tradesHook.wsTrades dependency!
 
   const devTokensTable = useMemo(() => (
     tokenData?.deployer ? (
@@ -281,17 +282,18 @@ function TokenResizablePanelsComponent({
       blockchain,
       symbol: tokenData?.symbol || '', // ensures type-safety
       priceUSD: tokenData?.priceUSD ?? 0, // avoids undefined
+      circulatingSupply: tokenData?.circulatingSupply ?? tokenData?.totalSupply ?? 0,
     }),
-    [tokenData?.address, tokenData?.symbol, tokenData?.priceUSD, blockchain],
+    [tokenData?.address, tokenData?.symbol, tokenData?.priceUSD, tokenData?.circulatingSupply, tokenData?.totalSupply, blockchain],
   );
 
-  // Memoize chart component
   const chartComponent = useMemo(() => (
     <TradingViewChart
       isPair={false}
       baseAsset={baseAsset}
+      deployer={tokenData?.deployer ?? undefined}
     />
-  ), [baseAsset]);
+  ), [baseAsset, tokenData?.deployer]);
 
   // Memoize trades sidebar - TradesTable subscribes to store internally
   const tradesSidebar = useMemo(() => (
@@ -300,8 +302,9 @@ function TokenResizablePanelsComponent({
       isPair={false}
       storeTrades={[]} // Empty - TradesTable uses store directly
       compact
+      assetAddress={tokenData.address}
     />
-  ), [address, blockchain]); // NO tradesHook.wsTrades dependency!
+  ), [address, blockchain, tokenData.address]); // NO tradesHook.wsTrades dependency!
 
   // 🔹 Render
   return (

@@ -11,6 +11,7 @@ import TokenMetricsCard from '@/features/pair/components/TokenMetricsCard';
 import { TimeframeChange } from '@/utils/TimeFrameChange';
 import { getTimeAgo } from '@/utils/TimeAgo';
 import SafeImage from '@/components/SafeImage';
+import { TradingWindow } from '../trades/TradingWindow';
 
 const labelClass = 'text-grayMedium font-menlo text-[11px] sm:text-[12px] font-normal leading-[19.5px] underline decoration-solid underline-offset-auto truncate';
 const valueClass = 'text-white text-[12px] sm:text-[13px] font-normal leading-[19.5px] truncate';
@@ -384,7 +385,7 @@ export default function StatsCard({ data, isLoading }: Props) {
         <div className="w-full h-auto sm:h-[1300px] space-y-1 sm:space-y-2 pb-[200px]">
             <Header base={data.baseToken} quote={data.quoteToken} headerImage={data.headerImage} socials={data.socials} />
             <TimeframeSelector timeframes={data.timeframes} selected={selectedTf} onSelect={setSelectedTf} />
-            {/* <TradingWindow/> */}
+            <TradingWindow/>
             <StatsSection stats={stats} />
             {data.bondingInfo && <BondingProgress info={data.bondingInfo} />}
 

@@ -74,7 +74,9 @@ export function MarketsTable({ data, isLoading }: MarketsTableProps) {
                       />
                     </div>
                   ) : (
-                    <div className="w-4 h-4 rounded-full bg-success flex-shrink-0" />
+                    <div className="w-4 h-4 rounded-full bg-success/30 flex-shrink-0 flex items-center justify-center text-[8px] text-success font-bold">
+                      {(market.exchange ?? '?').charAt(0).toUpperCase()}
+                    </div>
                   )}
                   <span className="text-textPrimary truncate text-xs max-w-[120px]">{market.exchange}</span>
                 </div>

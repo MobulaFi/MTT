@@ -31,7 +31,7 @@ export const ChartTopNav = ({ tvWidget }: IChartTopNav) => {
 
   return (
     <div className="h-[40px] border-b-[1px] border-borderDefault flex gap-2.5 px-3 items-center bg-bgPrimary">
-      {/* Timeframe buttons */}
+      {/* Timeframe buttons */} 
       {Object.entries(timeframes).map(([key, value], i) => (
         <button
           type="button"

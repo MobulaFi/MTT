@@ -1,6 +1,6 @@
 import { getMobulaClient } from '@/lib/mobulaClient';
 import { TokenDetailsResponse } from '@mobula_labs/types';
-import { formatPriceWithPlaceholder } from '@/utils/tokenMetrics';
+import { formatPriceWithPlaceholder, formatCompactNumber, getPriceChangeArrow } from '@/utils/tokenMetrics';
 import { TokenHeader } from '@/features/token/components/TokenHeader';
 import TokenStatsCard from '@/features/token/components/TokenStatsCard';
 import TokenResizablePanels from '@/features/token/components/TokenResizablePanel';
@@ -44,7 +44,9 @@ export async function generateMetadata({ params }: TokenPageProps) {
   const tokenAddress = initialData.address;
   const baseTokenLogo = initialData.logo || "https://framerusercontent.com/images/83wKw3MxTAt4Shj56JmraGNXdM.png?scale-down-to=1024"
 
-  const title = `${initialData?.symbol} ${price} ${initialData?.symbol || 'USD'} price today, ${initialData?.name} live chart, forecast | Mobula`;
+  const marketCap = formatCompactNumber(initialData.marketCapUSD);
+  const arrow = getPriceChangeArrow(initialData.priceChange24hPercentage);
+  const title = `${initialData?.symbol} ${arrow} ${marketCap} | Mobula`;
   const readablePrice = price === 'N/A' ? 'N/A' : `$${price}`;
   const description = `The ${initialData?.name} live price is ${readablePrice} ${initialData?.symbol || 'USD'} with a 24h volume of $${volume.toLocaleString()} USD. Buy ${initialData?.symbol}. Check ${initialData?.symbol} airdrop and audits. ${tokenAddress} is ${initialData?.symbol} (${initialData?.name}) token contract address on ${initialData.blockchain}.`;
 

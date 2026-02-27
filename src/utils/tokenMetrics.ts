@@ -36,3 +36,30 @@ export const formatLiquidityWithPlaceholder = (value?: number | null, fallback =
 
 export const shouldShowLowLiquidityWarning = (value?: number | null): boolean =>
   typeof value === 'number' && value > 0 && value < LOW_LIQUIDITY_WARNING_THRESHOLD;
+
+export const formatCompactNumber = (value?: number | null): string => {
+  if (value === null || value === undefined || value === 0) {
+    return '--';
+  }
+
+  const absValue = Math.abs(value);
+
+  if (absValue >= 1_000_000_000) {
+    return `$${(value / 1_000_000_000).toFixed(1)}B`;
+  }
+  if (absValue >= 1_000_000) {
+    return `$${(value / 1_000_000).toFixed(1)}M`;
+  }
+  if (absValue >= 1_000) {
+    return `$${(value / 1_000).toFixed(1)}K`;
+  }
+
+  return `$${value.toFixed(0)}`;
+};
+
+export const getPriceChangeArrow = (priceChange?: number | null): string => {
+  if (priceChange === null || priceChange === undefined || priceChange === 0) {
+    return '';
+  }
+  return priceChange > 0 ? '↑' : '↓';
+};

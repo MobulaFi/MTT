@@ -9,6 +9,8 @@ import {
 } from '@/config/endpoints';
 import type { RestEndpointKey, WssRegionKey } from '@/config/endpoints';
 
+export type StreamMode = 'pulse-v2' | 'token-filters';
+
 export interface CustomUrl {
   key: string;
   url: string;
@@ -28,6 +30,13 @@ interface ApiStore {
   customUrls: CustomUrl[];
   customLabels: Record<string, string>;
   selectedRestUrl: string | null;
+  apiKey: string | null;
+
+  apiKeySource: 'server' | 'client';
+  serverDisplayLabel: string | null;
+  serverLatency: string | null;
+  setApiKeySource: (source: 'server' | 'client') => void;
+  setServerDisplayInfo: (label: string | null, latency: string | null) => void;
 
   // WSS
   customWssUrls: CustomWssUrl[];
@@ -43,6 +52,11 @@ interface ApiStore {
   getLabel: (key: string, defaultLabel: string) => string;
   getLabelForUrl: (url: string) => string;
   setSelectedRestUrl: (url: string | null) => void;
+  setApiKey: (key: string | null) => void;
+
+  // Stream Mode
+  streamMode: StreamMode;
+  setStreamMode: (mode: StreamMode) => void;
 
   // WSS Actions
   addCustomWssUrl: (type: keyof SubscriptionPayload, url: string, label: string, mode?: 'all' | 'individual') => void;
@@ -78,8 +92,28 @@ export const useApiStore = create<ApiStore>()(
       selectedIndividualWssType: null,
       selectedWssRegion: DEFAULT_WSS_REGION,
       selectedRestUrl: null,
+      apiKey: null,
+      apiKeySource: 'server',
+      serverDisplayLabel: null,
+      serverLatency: null,
+      streamMode: 'pulse-v2' as StreamMode,
+
+      setStreamMode: (mode) => set({ streamMode: mode }),
 
       setCurrentUrl: (url) => set({ currentUrl: url }),
+
+      setApiKeySource: (source) => {
+        // Set cookie for sdkClient.ts to read
+        if (typeof document !== 'undefined') {
+          document.cookie = `apiKeySource=${source}; path=/; max-age=31536000`; // 1 year
+        }
+        set({ apiKeySource: source });
+      },
+
+      setServerDisplayInfo: (label, latency) =>
+        set({ serverDisplayLabel: label, serverLatency: latency }),
+
+      setApiKey: (key) => set({ apiKey: key }),
 
       setSelectedRestUrl: (url) => set({ selectedRestUrl: url }),
 
@@ -204,7 +238,18 @@ export const useApiStore = create<ApiStore>()(
         selectedIndividualWssType: state.selectedIndividualWssType,
         selectedWssRegion: state.selectedWssRegion,
         selectedRestUrl: state.selectedRestUrl,
+        apiKey: state.apiKey,
+        apiKeySource: state.apiKeySource,
+        serverDisplayLabel: state.serverDisplayLabel,
+        serverLatency: state.serverLatency,
+        streamMode: state.streamMode,
       }),
+      onRehydrateStorage: () => (state) => {
+        // Sync apiKeySource cookie when store is rehydrated from localStorage
+        if (state?.apiKeySource && typeof document !== 'undefined') {
+          document.cookie = `apiKeySource=${state.apiKeySource}; path=/; max-age=31536000`;
+        }
+      },
     }
   )
 );

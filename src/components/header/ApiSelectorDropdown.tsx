@@ -1,8 +1,8 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { useApiStore } from '@/store/apiStore';
-import { initMobulaClient } from '@/lib/mobulaClient';
-import { FiServer, FiEdit2, FiPlus, FiX, FiRadio } from 'react-icons/fi';
+import { initMobulaClient, reinitMobulaClient } from '@/lib/mobulaClient';
+import { FiServer, FiEdit2, FiPlus, FiX, FiRadio, FiKey, FiTrash2, FiEye, FiEyeOff } from 'react-icons/fi';
 import type { SubscriptionPayload } from '@mobula_labs/sdk';
 import {
   DEFAULT_WSS_REGION,
@@ -49,7 +49,12 @@ export const ApiSelectorDropdown = ({
     setSelectedAllModeWssUrl,
     setSelectedIndividualWssType,
     setSelectedWssRegion,
-    getCustomWssUrls
+    getCustomWssUrls,
+    apiKey,
+    setApiKey,
+    setApiKeySource,
+    setServerDisplayInfo,
+    apiKeySource,
   } = useApiStore();
 
   const [isMounted, setIsMounted] = useState(false);
@@ -63,6 +68,10 @@ export const ApiSelectorDropdown = ({
   const [currentWssRegionUrl, setCurrentWssRegionUrl] = useState<string>('');
   const [wssAddMode, setWssAddMode] = useState<'all' | 'individual'>('all');
   const [selectedWssType, setSelectedWssType] = useState<keyof SubscriptionPayload>('market');
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [serverConfig, setServerConfig] = useState<{ restUrl: string; hasApiKey: boolean } | null>(null);
+  const [serverLatency, setServerLatency] = useState<string>('...');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const regionLabels: Record<WssRegionKey, string> = {
@@ -129,6 +138,43 @@ export const ApiSelectorDropdown = ({
       checkLatencies();
     }
   }, [isOpen, activeTab]);
+
+  useEffect(() => {
+    if (!isOpen || apiKeySource !== 'server') return;
+    let cancelled = false;
+    setServerLatency('...');
+    setServerConfig(null);
+    setServerDisplayInfo('Server (env)', '...');
+    fetch('/api/mobula-server-config', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((data: { restUrl: string; hasApiKey: boolean }) => {
+        if (cancelled) return;
+        setServerConfig(data);
+        const url = data.restUrl;
+        const start = performance.now();
+        fetch(url, { method: 'GET', cache: 'no-cache' })
+          .then(() => {
+            if (cancelled) return;
+            const ms = Math.round(performance.now() - start);
+            const latencyStr = `${ms}ms`;
+            setServerLatency(latencyStr);
+            setServerDisplayInfo('Server (env)', latencyStr);
+          })
+          .catch(() => {
+            if (cancelled) return;
+            setServerLatency('error');
+            setServerDisplayInfo('Server (env)', 'error');
+          });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setServerLatency('error');
+        setServerDisplayInfo('Server (env)', 'error');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, apiKeySource, setServerDisplayInfo]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -302,32 +348,146 @@ export const ApiSelectorDropdown = ({
       style={dropdownStyle}
       className="z-[9999] w-72 bg-bgSurface border border-borderSurface rounded-lg shadow-2xl max-h-[65vh] overflow-hidden flex flex-col"
     >
-      {/* Tabs */}
+      {/* Server | Client toggle (top) */}
       <div className="flex border-b border-borderSurface bg-bgDeepAlt px-1.5 py-1.5 gap-1">
         <button
-          onClick={() => setActiveTab('rest')}
-          className={`flex-1 px-2.5 py-1.5 text-[11px] font-semibold rounded transition-all duration-200 flex items-center justify-center gap-1 ${isMounted && activeTab === 'rest'
-              ? 'text-white bg-success/20 border border-success/30'
-              : 'text-textTertiary hover:text-ghost'
-            }`}
+          type="button"
+          onClick={() => {
+            if (apiKeySource !== 'server') {
+              setApiKeySource('server');
+              window.location.reload();
+            }
+          }}
+          className={`flex-1 px-2.5 py-1.5 text-[11px] font-semibold rounded transition-all duration-200 flex items-center justify-center gap-1 ${apiKeySource === 'server' ? 'text-white bg-success/20 border border-success/30' : 'text-textTertiary hover:text-ghost border border-transparent'}`}
         >
           <FiServer size={12} />
-          <span>REST API</span>
+          <span>Server</span>
         </button>
         <button
-          onClick={() => setActiveTab('wss')}
-          className={`flex-1 px-2.5 py-1.5 text-[11px] font-semibold rounded transition-all duration-200 flex items-center justify-center gap-1 ${isMounted && activeTab === 'wss'
-              ? 'text-white bg-success/20 border border-success/30'
-              : 'text-textTertiary hover:text-ghost'
-            }`}
+          type="button"
+          onClick={() => {
+            if (apiKeySource !== 'client') {
+              setApiKeySource('client');
+              setServerDisplayInfo(null, null);
+              window.location.reload();
+            }
+          }}
+          className={`flex-1 px-2.5 py-1.5 text-[11px] font-semibold rounded transition-all duration-200 flex items-center justify-center gap-1 ${apiKeySource === 'client' ? 'text-white bg-success/20 border border-success/30' : 'text-textTertiary hover:text-ghost border border-transparent'}`}
         >
           <FiRadio size={12} />
-          <span>WebSocket</span>
+          <span>Client</span>
         </button>
       </div>
 
-      {/* Content */}
-      <div className="overflow-y-auto flex-1 transition-all duration-300">
+      {apiKeySource === 'server' ? (
+        /* Server: show region-style row (from env, like client Regions) */
+        <>
+          <div className="px-3 py-1.5 border-b border-borderSurface bg-bgDeepAlt/50 sticky top-0">
+            <h3 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Regions</h3>
+          </div>
+          <div className="py-1">
+            <div
+              className="mx-1 my-0.5 rounded px-2 py-1.5 transition-all duration-150 flex items-center justify-between bg-green-500/10 border border-green-500/30"
+              title={serverConfig?.restUrl}
+            >
+              <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                <div className="p-0.5 rounded-md flex-shrink-0 bg-green-500/20">
+                  <FiServer size={10} className="text-green-400" />
+                </div>
+                <span className="text-[12px] font-medium truncate text-white">
+                  {serverConfig?.restUrl ? (serverConfig.hasApiKey ? 'Server (env)' : 'Server (env, no key)') : '...'}
+                </span>
+              </div>
+              <span className={`text-[10px] font-mono tabular-nums shrink-0 ml-1 ${serverLatency === 'error' ? 'text-red-500' : 'text-gray-400'}`}>
+                {serverLatency}
+              </span>
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          {/* Client: REST API | WebSocket tabs */}
+          <div className="flex border-b border-borderSurface bg-bgDeepAlt px-1.5 py-1.5 gap-1">
+            <button
+              onClick={() => setActiveTab('rest')}
+              className={`flex-1 px-2.5 py-1.5 text-[11px] font-semibold rounded transition-all duration-200 flex items-center justify-center gap-1 ${isMounted && activeTab === 'rest' ? 'text-white bg-success/20 border border-success/30' : 'text-textTertiary hover:text-ghost border border-transparent'}`}
+            >
+              <FiServer size={12} />
+              <span>REST API</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('wss')}
+              className={`flex-1 px-2.5 py-1.5 text-[11px] font-semibold rounded transition-all duration-200 flex items-center justify-center gap-1 ${isMounted && activeTab === 'wss' ? 'text-white bg-success/20 border border-success/30' : 'text-textTertiary hover:text-ghost border border-transparent'}`}
+            >
+              <FiRadio size={12} />
+              <span>WebSocket</span>
+            </button>
+          </div>
+
+          {/* API Key (client only) */}
+          <div className="px-3 py-1.5 border-b border-borderSurface bg-bgDeepAlt/50 shrink-0">
+            <h3 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5 flex items-center gap-1">
+              <FiKey size={10} />
+              API Key
+            </h3>
+            <div className="flex gap-1.5 items-center">
+              <div className="flex-1 min-w-0 relative flex items-center">
+                <input
+                  type={showApiKey ? 'text' : 'password'}
+                  value={apiKeyInput !== '' ? apiKeyInput : (apiKey && showApiKey ? apiKey : '')}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  placeholder={apiKeyInput === '' && !(apiKey && showApiKey) ? (apiKey ? '••••••••••••' : 'Enter your API key') : ''}
+                  className="w-full bg-bgSurface border border-bgElevated rounded px-2 py-1 pr-7 text-[11px] text-white placeholder:text-gray-500 focus:outline-none focus:border-green-500/50"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowApiKey((prev) => !prev)}
+                  className="absolute right-1.5 p-0.5 rounded text-gray-500 hover:text-gray-300 transition-colors"
+                  title={showApiKey ? 'Hide API key' : 'Show API key'}
+                  tabIndex={-1}
+                >
+                  {showApiKey ? <FiEyeOff size={12} /> : <FiEye size={12} />}
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const key = apiKeyInput.trim();
+                  if (key) {
+                    setApiKey(key);
+                    setApiKeyInput('');
+                    reinitMobulaClient();
+                    window.location.reload();
+                  }
+                }}
+                className="px-2 py-1 text-[10px] font-medium rounded bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30 transition-colors shrink-0"
+              >
+                Save
+              </button>
+              {apiKey && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setApiKey(null);
+                    setApiKeyInput('');
+                    reinitMobulaClient();
+                  }}
+                  className="p-1 rounded text-red-400 hover:bg-red-500/20 border border-transparent hover:border-red-500/30 transition-colors shrink-0"
+                  title="Delete API key"
+                >
+                  <FiTrash2 size={12} />
+                </button>
+              )}
+            </div>
+            {apiKey && (
+              <p className="mt-1 text-[10px] text-green-500/90" role="status">
+                API key saved (stored in this device)
+              </p>
+            )}
+          </div>
+
+          {/* Content (REST / WebSocket) */}
+          <div className="overflow-y-auto flex-1 transition-all duration-300">
         {isMounted && activeTab === 'rest' ? (
           <>
             {/* Header */}
@@ -782,7 +942,9 @@ export const ApiSelectorDropdown = ({
             </div>
           </>
         ) : null}
-      </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };

@@ -1,10 +1,6 @@
 'use client';
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Spinner } from '@/components/ui/spinner';
 import { useChartTools } from '@/hooks/useChart';
 import { cn } from '@/lib/utils';
@@ -19,9 +15,11 @@ import { useChartStore } from '@/store/useChartStore';
 import { useThemeStore } from '@/store/useThemeStore';
 import { widgetOptionsDefault } from '@/utils/tradingview/helper';
 import { DISABLED_FEATURES, ENABLED_FEATURES } from './constants';
-import { Datafeed } from './datafeed';
+import { Datafeed, type ChartMetricMode } from './datafeed';
 import { overrides } from './theme';
 import { useRenderCounter } from '@/utils/useRenderCounter';
+import { usePriceDisplayStore } from '@/store/useDisplayPriceStore';
+import { useWalletConnection } from '@/hooks/useWalletConnection';
 
 interface TradingViewChartProps {
   baseAsset: {
@@ -30,7 +28,8 @@ interface TradingViewChartProps {
     symbol?: string;
     priceUSD?: number;
     base?: { symbol?: string };
-    quote?: { symbol?: string };
+    quote?: { symbol?: string; priceUSD?: number; logo?: string };
+    circulatingSupply?: number;
   };
   mobile?: boolean;
   custom_css_url?: string;
@@ -42,6 +41,10 @@ interface TradingViewChartProps {
   backgroundColor?: string;
   candleUpColor?: string;
   candleDownColor?: string;
+  deployer?: string;
+  userAddress?: string;
+  showSymbol?: boolean;
+  showGridLines?: boolean;
 }
 
 declare global {
@@ -62,13 +65,20 @@ const TradingViewChart = ({
   backgroundColor,
   candleUpColor,
   candleDownColor,
+  deployer,
+  userAddress,
+  showSymbol = true,
+  showGridLines = true,
 }: TradingViewChartProps) => {
   // Render counter for diagnostics
   useRenderCounter('TradingViewChart');
 
+  const { address: walletAddress } = useWalletConnection();
+  const effectiveUserAddress = userAddress ?? walletAddress ?? undefined;
+
   const ref = useRef<HTMLDivElement>(null);
   const widgetRef = useRef<IChartingLibraryWidget | null>(null);
-  const datafeedRef = useRef<any>(null);
+  const datafeedRef = useRef<ReturnType<typeof Datafeed> | null>(null);
   const isInitializingRef = useRef(false);
   const isMountedRef = useRef(true);
   const currentSymbolRef = useRef<string>('');
@@ -76,6 +86,11 @@ const TradingViewChart = ({
     isPair,
     address: baseAsset.address,
   });
+  const metricModeRef = useRef<ChartMetricMode>('price');
+  const [metricMode, setMetricMode] = useState<ChartMetricMode>('price');
+  const previousCurrencyRef = useRef<'USD' | 'QUOTE'>('USD');
+  const mcapButtonRef = useRef<HTMLElement | null>(null);
+  const priceButtonRef = useRef<HTMLElement | null>(null);
   const initialResolutionRef = useRef<string | undefined>(initialResolution);
   // Determine theme from backgroundColor if theme not provided
   const resolvedTheme = theme || (backgroundColor && (backgroundColor.toLowerCase() === '#ffffff' || backgroundColor.toLowerCase() === '#fff' || 
@@ -83,6 +98,133 @@ const TradingViewChart = ({
   const themeRef = useRef<'light' | 'dark'>(resolvedTheme);
   const candleUpColorRef = useRef<string | undefined>(candleUpColor);
   const candleDownColorRef = useRef<string | undefined>(candleDownColor);
+  const showSymbolRef = useRef<boolean>(showSymbol);
+  const showGridLinesRef = useRef<boolean>(showGridLines);
+
+  const { loadSavedTools, saveChartTools } = useChartTools();
+  const isChartLoading = useChartStore((s) => s.isChartLoading);
+  const setIsChartReady = useChartStore((s) => s.setIsChartReady);
+  const themeBgColor = useThemeStore((s) => s.colors.bgPrimary);
+  const setTimeframe = useChartStore((s) => s.setTimeframe);
+  const chartLoaded = useChartStore((s) => s.chartLoaded);
+  const displayCurrency = usePriceDisplayStore((s) => s.displayCurrency);
+  const setDisplayCurrency = usePriceDisplayStore((s) => s.setDisplayCurrency);
+  const quoteCurrencySymbolStore = usePriceDisplayStore((s) => s.quoteCurrencySymbol);
+  const setQuoteInfoStore = usePriceDisplayStore((s) => s.setQuoteInfo);
+
+  const effectiveDisplayCurrency = useMemo<'USD' | 'QUOTE'>(() => {
+    if (!isPair) return 'USD';
+    if (metricMode === 'marketcap') return 'USD';
+    return displayCurrency;
+  }, [displayCurrency, isPair, metricMode]);
+
+  const derivedQuoteSymbol = quoteCurrencySymbolStore || baseAsset.quote?.symbol || baseAsset.symbol || 'QUOTE';
+  const canToggleCurrency = isPair && Boolean(derivedQuoteSymbol);
+  const shouldShowCurrencyToggle = false; // MOB-1687: hide broken USD/SOL toggle for now
+  const isCurrencyToggleDisabled = metricMode === 'marketcap';
+  const hasSupply = Boolean(baseAsset.circulatingSupply && baseAsset.circulatingSupply > 0);
+
+  const handleCurrencySelect = useCallback(
+    (target: 'USD' | 'QUOTE') => {
+      if (isCurrencyToggleDisabled || effectiveDisplayCurrency === target) return;
+      setDisplayCurrency(target);
+    },
+    [effectiveDisplayCurrency, isCurrencyToggleDisabled, setDisplayCurrency],
+  );
+
+  const updateHeaderButtonStyles = useCallback((mode: ChartMetricMode) => {
+    const currentTheme = themeRef.current ?? 'dark';
+    const activeColor = '#18C722';
+    const inactiveColor = currentTheme === 'light' ? '#6B7280' : '#9CA3AF';
+    
+    if (mcapButtonRef.current) {
+      mcapButtonRef.current.style.color = mode === 'marketcap' ? activeColor : inactiveColor;
+      mcapButtonRef.current.style.fontWeight = mode === 'marketcap' ? '600' : '400';
+    }
+    if (priceButtonRef.current) {
+      priceButtonRef.current.style.color = mode === 'price' ? activeColor : inactiveColor;
+      priceButtonRef.current.style.fontWeight = mode === 'price' ? '600' : '400';
+    }
+  }, []);
+
+  const handleMetricModeChange = useCallback(
+    (mode: ChartMetricMode) => {
+      if (metricModeRef.current === mode) return;
+      metricModeRef.current = mode;
+      setMetricMode(mode);
+      updateHeaderButtonStyles(mode);
+
+      if (!isPair) return;
+
+      if (mode === 'marketcap') {
+        previousCurrencyRef.current = displayCurrency;
+        if (displayCurrency !== 'USD') {
+          setDisplayCurrency('USD');
+        }
+      } else if (mode === 'price' && previousCurrencyRef.current !== displayCurrency) {
+        setDisplayCurrency(previousCurrencyRef.current);
+      }
+    },
+    [displayCurrency, isPair, setDisplayCurrency, baseAsset.circulatingSupply, updateHeaderButtonStyles],
+  );
+
+  const currencyToggle = shouldShowCurrencyToggle && canToggleCurrency ? (
+    <div className="flex overflow-hidden rounded-full border border-borderDefault bg-bgPrimary/80 shadow-sm pointer-events-auto">
+      <button
+        type="button"
+        onClick={() => handleCurrencySelect('USD')}
+        disabled={isCurrencyToggleDisabled}
+        className={cn(
+          'px-3 py-1 text-xs font-semibold transition-colors',
+          effectiveDisplayCurrency === 'USD' ? 'bg-success text-white' : 'text-graySlate hover:text-white',
+          isCurrencyToggleDisabled && 'opacity-60 cursor-not-allowed',
+        )}
+      >
+        USD
+      </button>
+      <button
+        type="button"
+        onClick={() => handleCurrencySelect('QUOTE')}
+        disabled={isCurrencyToggleDisabled}
+        className={cn(
+          'px-3 py-1 text-xs font-semibold transition-colors border-l border-borderDefault/60',
+          effectiveDisplayCurrency === 'QUOTE' ? 'bg-success text-white' : 'text-graySlate hover:text-white',
+          (isCurrencyToggleDisabled || !canToggleCurrency) && 'opacity-60 cursor-not-allowed',
+        )}
+      >
+        {derivedQuoteSymbol}
+      </button>
+    </div>
+  ) : null;
+
+  const refreshChartData = useCallback(() => {
+    if (!widgetRef.current) return;
+    
+    try {
+      widgetRef.current.onChartReady(() => {
+        const chart = widgetRef.current?.activeChart();
+        if (!chart) return;
+
+        const baseSymbol = isPair
+          ? `${baseAsset.base?.symbol ?? baseAsset.symbol}/USD`
+          : `${baseAsset.symbol}/USD`;
+        
+        const timestamp = Date.now();
+        const symbolWithMetric = metricModeRef.current === 'marketcap' 
+          ? `${baseSymbol}_MCAP_${timestamp}`
+          : `${baseSymbol}_PRICE_${timestamp}`;
+        currentSymbolRef.current = symbolWithMetric;
+        
+        console.log('Refreshing chart data with metric:', metricModeRef.current, 'symbol:', symbolWithMetric);
+        chart.setSymbol(symbolWithMetric, () => {
+          console.log('Symbol set callback executed for:', symbolWithMetric);
+          console.log('getBars should have been called by TradingView now');
+        });
+      });
+    } catch (error) {
+      console.error('Error refreshing chart data:', error);
+    }
+  }, [isPair, baseAsset.symbol, baseAsset.base?.symbol]);
 
   useEffect(() => {
     initialResolutionRef.current = initialResolution;
@@ -91,16 +233,30 @@ const TradingViewChart = ({
     themeRef.current = newTheme;
     candleUpColorRef.current = candleUpColor;
     candleDownColorRef.current = candleDownColor;
-  }, [initialResolution, theme, backgroundColor, candleUpColor, candleDownColor]);
+    showSymbolRef.current = showSymbol;
+    showGridLinesRef.current = showGridLines;
+  }, [initialResolution, theme, backgroundColor, candleUpColor, candleDownColor, showSymbol, showGridLines]);
 
-  const { loadSavedTools, saveChartTools } = useChartTools();
-  // Use granular selectors to prevent unnecessary re-renders
-  const isChartLoading = useChartStore((s) => s.isChartLoading);
-  const setIsChartReady = useChartStore((s) => s.setIsChartReady);
-  // Get theme background color from store
-  const themeBgColor = useThemeStore((s) => s.colors.bgPrimary);
-  const setTimeframe = useChartStore((s) => s.setTimeframe);
-  const chartLoaded = useChartStore((s) => s.chartLoaded);
+  useEffect(() => {
+    if (!isPair || !baseAsset.quote?.symbol) return;
+    setQuoteInfoStore(baseAsset.quote.symbol ?? '', baseAsset.quote.priceUSD ?? 1, baseAsset.quote.logo);
+  }, [isPair, baseAsset.quote?.symbol, baseAsset.quote?.priceUSD, baseAsset.quote?.logo, setQuoteInfoStore]);
+
+  useEffect(() => {
+    if (!datafeedRef.current) return;
+    datafeedRef.current.setCurrencyMode(effectiveDisplayCurrency === 'USD');
+    refreshChartData();
+  }, [effectiveDisplayCurrency, refreshChartData]);
+
+  useEffect(() => {
+    if (!datafeedRef.current || !widgetRef.current) return;
+    datafeedRef.current.setMetricMode(metricMode);
+    datafeedRef.current.setCirculatingSupply(baseAsset.circulatingSupply);
+    widgetRef.current.onChartReady(() => {
+      refreshChartData();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metricMode, baseAsset.circulatingSupply]);
 
   const setupChangeListeners = useCallback(
     (widget: IChartingLibraryWidget) => {
@@ -141,33 +297,46 @@ const TradingViewChart = ({
     [saveChartTools, setTimeframe],
   );
 
-
   /**
    * Initialize TradingView Chart
    */
   useEffect(() => {
     isMountedRef.current = true;
 
+    console.log('[Chart Debug] useEffect triggered', {
+      address: baseAsset?.address,
+      refAvailable: !!ref.current,
+      isInitializing: isInitializingRef.current,
+      widgetExists: !!widgetRef.current,
+    });
+
     if (!baseAsset?.address || !ref.current) {
-      console.warn('Invalid baseAsset or ref not available');
+      console.warn('[Chart Debug] Invalid baseAsset or ref not available');
       return;
     }
 
-    if (isInitializingRef.current || widgetRef.current) return;
+    if (isInitializingRef.current || widgetRef.current) {
+      console.log('[Chart Debug] Already initializing or widget exists, skipping');
+      return;
+    }
     isInitializingRef.current = true;
 
     const initChart = async () => {
       try {
+        console.log('[Chart Debug] Starting chart initialization...');
         const { widget: Widget } = await import('../../../public/static/charting_library/');
+        console.log('[Chart Debug] TradingView library loaded');
         if (!isMountedRef.current || !ref.current) {
           isInitializingRef.current = false;
           return;
         }
 
-        // Build symbol for display
-        const symbol = isPair
+        const baseSymbol = isPair
           ? `${baseAsset.base?.symbol ?? baseAsset.symbol}/USD`
           : `${baseAsset.symbol}/USD`;
+        const symbol = metricModeRef.current === 'marketcap' 
+          ? `${baseSymbol}_MCAP`
+          : `${baseSymbol}_PRICE`;
 
         currentSymbolRef.current = symbol;
         currentModeRef.current = { isPair, address: baseAsset.address };
@@ -182,6 +351,7 @@ const TradingViewChart = ({
               symbol: baseAsset.symbol,
               base: baseAsset.base,
               quote: baseAsset.quote,
+              circulatingSupply: baseAsset.circulatingSupply,
             }
           : {
               asset: baseAsset.address, // TOKEN address
@@ -189,16 +359,25 @@ const TradingViewChart = ({
               priceUSD: baseAsset.priceUSD,
               isPair: false,
               symbol: baseAsset.symbol,
+              circulatingSupply: baseAsset.circulatingSupply,
             };
 
         // Initialize datafeed
         if (!datafeedRef.current) {
-          datafeedRef.current = Datafeed(assetPayload, isUsd);
+          datafeedRef.current = Datafeed(assetPayload, {
+            isUsd: effectiveDisplayCurrency === 'USD',
+            metricMode: metricModeRef.current,
+            deployer,
+            userAddress: effectiveUserAddress,
+          });
         } else {
           datafeedRef.current.updateBaseAsset(assetPayload);
+          datafeedRef.current.setCurrencyMode(effectiveDisplayCurrency === 'USD');
+          datafeedRef.current.setMetricMode(metricModeRef.current);
         }
 
         const currentTheme = themeRef.current ?? 'dark';
+        const toolbarBgColor = backgroundColor || (currentTheme === 'light' ? '#ffffff' : '#121319');
         
         const widgetOptions: ChartingLibraryWidgetOptions = {
           datafeed: datafeedRef.current,
@@ -208,9 +387,10 @@ const TradingViewChart = ({
           fullscreen: false,
           autosize: true,
           theme: currentTheme === 'light' ? 'Light' : 'Dark',
+          toolbar_bg: toolbarBgColor,
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone as Timezone,
           custom_css_url,
-          disabled_features: [...DISABLED_FEATURES, 'create_volume_indicator_by_default'],
+          disabled_features: DISABLED_FEATURES,
           enabled_features: [...ENABLED_FEATURES],
           loading_screen: {
             backgroundColor: backgroundColor || themeBgColor || (currentTheme === 'light' ? '#ffffff' : '#0B0E14'),
@@ -240,6 +420,9 @@ const TradingViewChart = ({
             const upColorFormatted = upColor.startsWith('#') ? upColor : `#${upColor}`;
             const downColorFormatted = downColor.startsWith('#') ? downColor : `#${downColor}`;
             
+            // If grid lines are disabled, use transparent color
+            const effectiveGridColor = showGridLinesRef.current ? gridColor : 'transparent';
+            
             return {
               // Candle style
               'mainSeriesProperties.candleStyle.upColor': upColorFormatted,
@@ -254,15 +437,17 @@ const TradingViewChart = ({
               // Pane properties
               'paneProperties.background': bgColor,
               'paneProperties.backgroundType': 'solid',
-              'paneProperties.vertGridProperties.color': gridColor,
-              'paneProperties.horzGridProperties.color': gridColor,
+              'paneProperties.vertGridProperties.color': effectiveGridColor,
+              'paneProperties.horzGridProperties.color': effectiveGridColor,
               'paneProperties.crossHairProperties.color': lineColor,
               
-              // Legend
-              'paneProperties.legendProperties.showLegend': true,
-              'paneProperties.legendProperties.showStudyTitles': true,
-              'paneProperties.legendProperties.showSeriesTitle': true,
-              'paneProperties.legendProperties.showStudyValues': true,
+              // Legend - control symbol visibility
+              'paneProperties.legendProperties.showLegend': showSymbolRef.current,
+              'paneProperties.legendProperties.showSeriesTitle': showSymbolRef.current,
+              'paneProperties.legendProperties.showSeriesOHLC': showSymbolRef.current,
+              'paneProperties.legendProperties.showStudyTitles': showSymbolRef.current,
+              'paneProperties.legendProperties.showStudyValues': showSymbolRef.current,
+              'paneProperties.legendProperties.showBarChange': showSymbolRef.current,
               
               // Scales
               'scalesProperties.backgroundColor': scaleBgColor,
@@ -273,7 +458,7 @@ const TradingViewChart = ({
               'priceScaleProperties.showSeriesLastValue': true,
               
               // Symbol watermark
-              'symbolWatermarkProperties.visibility': false,
+              'symbolWatermarkProperties.visibility': showSymbolRef.current,
               
               // Time scale
               'timeScale.rightOffset': 5,
@@ -294,11 +479,18 @@ const TradingViewChart = ({
           interval: initialResolutionRef.current ? (initialResolutionRef.current as ResolutionString) : widgetOptionsDefault.interval,
         };
 
+        console.log('[Chart Debug] Creating TradingView widget with options:', {
+          symbol: widgetOptions.symbol,
+          theme: widgetOptions.theme,
+          containerExists: !!widgetOptions.container,
+        });
         const tvWidget = new (Widget as ChartingLibraryWidgetConstructor)(widgetOptions);
         widgetRef.current = tvWidget;
         window.tvWidget = tvWidget;
+        console.log('[Chart Debug] Widget created, waiting for onChartReady...');
 
         tvWidget.onChartReady(async () => {
+          console.log('[Chart Debug] onChartReady fired!');
           if (!isMountedRef.current) return;
 
           try {
@@ -316,12 +508,22 @@ const TradingViewChart = ({
             const scaleBgColor = backgroundColor || themeBgColor || (currentTheme === 'light' ? '#ffffff' : '#121319');
             const lineColor = currentTheme === 'light' ? '#E5E7EB' : '#2A2E39';
             
-            const overrides: any = {
+            // If grid lines are disabled, use transparent color
+            const effectiveGridColor = showGridLinesRef.current ? gridColor : 'transparent';
+            
+            const overrides: Record<string, string | number | boolean> = {
               'paneProperties.background': bgColor,
-              'paneProperties.vertGridProperties.color': gridColor,
-              'paneProperties.horzGridProperties.color': gridColor,
+              'paneProperties.vertGridProperties.color': effectiveGridColor,
+              'paneProperties.horzGridProperties.color': effectiveGridColor,
               'paneProperties.backgroundType': 'solid',
               'paneProperties.crossHairProperties.color': lineColor,
+              'paneProperties.legendProperties.showLegend': showSymbolRef.current,
+              'paneProperties.legendProperties.showSeriesTitle': showSymbolRef.current,
+              'paneProperties.legendProperties.showSeriesOHLC': showSymbolRef.current,
+              'paneProperties.legendProperties.showStudyTitles': showSymbolRef.current,
+              'paneProperties.legendProperties.showStudyValues': showSymbolRef.current,
+              'paneProperties.legendProperties.showBarChange': showSymbolRef.current,
+              'symbolWatermarkProperties.visibility': showSymbolRef.current,
               'scalesProperties.backgroundColor': scaleBgColor,
               'scalesProperties.lineColor': lineColor,
               'scalesProperties.textColor': textColor,
@@ -345,6 +547,52 @@ const TradingViewChart = ({
 
             tvWidget.applyOverrides(overrides);
 
+            // Wait for header to be ready before creating buttons
+            if (hasSupply) {
+              tvWidget.headerReady().then(() => {
+                try {
+                  const activeColor = '#18C722';
+                  const inactiveColor = currentTheme === 'light' ? '#6B7280' : '#9CA3AF';
+                  
+                  const toggleButton = tvWidget.createButton({ align: 'left' });
+                  toggleButton.style.display = 'flex';
+                  toggleButton.style.alignItems = 'center';
+                  toggleButton.style.gap = '0';
+                  toggleButton.style.cursor = 'default';
+                  toggleButton.style.fontSize = '13px';
+                  toggleButton.innerHTML = '';
+                  
+                  const priceSpan = document.createElement('span');
+                  priceSpan.textContent = 'Price';
+                  priceSpan.style.cursor = 'pointer';
+                  priceSpan.style.color = metricModeRef.current === 'price' ? activeColor : inactiveColor;
+                  priceSpan.style.fontWeight = metricModeRef.current === 'price' ? '600' : '400';
+                  priceSpan.addEventListener('click', () => handleMetricModeChange('price'));
+                  priceButtonRef.current = priceSpan;
+                  
+                  const separatorSpan = document.createElement('span');
+                  separatorSpan.textContent = ' / ';
+                  separatorSpan.style.color = inactiveColor;
+                  
+                  const mcapSpan = document.createElement('span');
+                  mcapSpan.textContent = 'Mcap';
+                  mcapSpan.style.cursor = 'pointer';
+                  mcapSpan.style.color = metricModeRef.current === 'marketcap' ? activeColor : inactiveColor;
+                  mcapSpan.style.fontWeight = metricModeRef.current === 'marketcap' ? '600' : '400';
+                  mcapSpan.addEventListener('click', () => handleMetricModeChange('marketcap'));
+                  mcapButtonRef.current = mcapSpan;
+                  
+                  toggleButton.appendChild(priceSpan);
+                  toggleButton.appendChild(separatorSpan);
+                  toggleButton.appendChild(mcapSpan);
+                } catch (error) {
+                  console.error('[Chart Debug] Error creating toggle button:', error);
+                }
+              }).catch((error) => {
+                console.error('[Chart Debug] Error waiting for header ready:', error);
+              });
+            }
+
             // Set initial resolution if provided
             if (initialResolutionRef.current) {
               try {
@@ -358,16 +606,17 @@ const TradingViewChart = ({
 
             await loadSavedTools(chart);
             setupChangeListeners(tvWidget);
+            console.log('[Chart Debug] Setting chart as ready and loaded');
             setIsChartReady();
             chartLoaded();
           } catch (error) {
-            console.error('Error in chart ready callback:', error);
+            console.error('[Chart Debug] Error in chart ready callback:', error);
           } finally {
             isInitializingRef.current = false;
           }
         });
       } catch (error) {
-        console.error('Error initializing TradingView:', error);
+        console.error('[Chart Debug] Error initializing TradingView:', error);
         isInitializingRef.current = false;
       }
     };
@@ -437,6 +686,29 @@ const TradingViewChart = ({
   }, [baseAsset.address, isPair, baseAsset.symbol, baseAsset.blockchain]);
 
   /**
+   * Update marks options when wallet address or deployer changes
+   */
+  useEffect(() => {
+    if (!datafeedRef.current) return;
+    datafeedRef.current.updateMarksOptions(deployer, effectiveUserAddress);
+    
+    // Force chart to refresh marks
+    if (widgetRef.current) {
+      widgetRef.current.onChartReady(() => {
+        try {
+          const chart = widgetRef.current?.activeChart();
+          if (chart) {
+            chart.clearMarks();
+            chart.refreshMarks();
+          }
+        } catch (error) {
+          console.error('Error refreshing marks:', error);
+        }
+      });
+    }
+  }, [deployer, effectiveUserAddress]);
+
+  /**
    * Update theme and chart type when they change
    */
   useEffect(() => {
@@ -468,11 +740,21 @@ const TradingViewChart = ({
         const scaleBgColor = backgroundColor || themeBgColor || (currentTheme === 'light' ? '#ffffff' : '#121319');
         const lineColor = currentTheme === 'light' ? '#E5E7EB' : '#2A2E39';
         
-        const overrides: any = {
+        // If grid lines are disabled, use transparent color
+        const effectiveGridColor = showGridLinesRef.current ? gridColor : 'transparent';
+        
+        const overrides: Record<string, string | number | boolean> = {
           'paneProperties.background': bgColor,
-          'paneProperties.vertGridProperties.color': gridColor,
-          'paneProperties.horzGridProperties.color': gridColor,
+          'paneProperties.vertGridProperties.color': effectiveGridColor,
+          'paneProperties.horzGridProperties.color': effectiveGridColor,
           'paneProperties.crossHairProperties.color': lineColor,
+          'paneProperties.legendProperties.showLegend': showSymbolRef.current,
+          'paneProperties.legendProperties.showSeriesTitle': showSymbolRef.current,
+          'paneProperties.legendProperties.showSeriesOHLC': showSymbolRef.current,
+          'paneProperties.legendProperties.showStudyTitles': showSymbolRef.current,
+          'paneProperties.legendProperties.showStudyValues': showSymbolRef.current,
+          'paneProperties.legendProperties.showBarChange': showSymbolRef.current,
+          'symbolWatermarkProperties.visibility': showSymbolRef.current,
           'scalesProperties.backgroundColor': scaleBgColor,
           'scalesProperties.lineColor': lineColor,
           'scalesProperties.textColor': textColor,
@@ -490,7 +772,7 @@ const TradingViewChart = ({
         console.error('Error updating theme/colors:', error);
       }
     });
-  }, [theme, candleUpColor, candleDownColor, backgroundColor, themeBgColor]);
+  }, [theme, candleUpColor, candleDownColor, backgroundColor, themeBgColor, showSymbol, showGridLines]);
 
   // Use CSS variable for consistent background - it's already set by the head script or CSS defaults
   // Only use explicit backgroundColor prop if provided (for embeds with custom colors)
@@ -502,6 +784,11 @@ const TradingViewChart = ({
         className={cn("relative h-full", !explicitBgColor && "bg-bgPrimary")}
         style={explicitBgColor ? { backgroundColor: explicitBgColor } : undefined}
       >
+        {currencyToggle && (
+          <div className="absolute top-3 right-3 z-20 flex flex-col items-end gap-2 pointer-events-none">
+            {currencyToggle}
+          </div>
+        )}
         <div
           className={cn(
             'absolute z-10 w-full h-full transition-opacity duration-300 ease-in-out',

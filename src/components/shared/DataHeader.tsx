@@ -17,6 +17,8 @@ import {
   formatLiquidityWithPlaceholder,
   formatPriceWithPlaceholder,
   shouldShowLowLiquidityWarning,
+  formatCompactNumber,
+  getPriceChangeArrow,
 } from '@/utils/tokenMetrics';
 
 interface TokenInfo {
@@ -73,9 +75,16 @@ export function DataHeader({
 
   const priceUSD = primaryToken?.priceUSD;
   const priceDisplayValue = formatPriceWithPlaceholder(priceUSD);
+  
+  const currentMarket = markets[0];
+  const priceChange = currentMarket?.priceChange24hPercentage ?? 0;
+  const marketCap = primaryToken?.marketCapUSD;
+  const arrow = getPriceChangeArrow(priceChange);
+  const marketCapFormatted = formatCompactNumber(marketCap);
+  
   const title =
-    primaryToken?.symbol && priceUSD !== undefined
-      ? `${primaryToken.symbol} ${priceDisplayValue} ${secondaryToken?.symbol ?? 'USD'} price today | Mobula`
+    primaryToken?.symbol
+      ? `${primaryToken.symbol} ${arrow} ${marketCapFormatted} | Mobula`
       : 'Mobula';
 
   const liquidityDisplayValue =

@@ -2,11 +2,9 @@
 
 import { useEffect, useRef } from 'react';
 import { usePairTradeStore } from '@/features/pair/store/usePairTradeStore';
-import { getMobulaClient } from '@/lib/mobulaClient';
+import { streams } from '@/lib/sdkClient';
 import { UpdateBatcher } from '@/utils/UpdateBatcher';
 import type { Transaction } from '@/features/pair/store/usePairTradeStore';
-
-const getClient = () => getMobulaClient();
 
 interface TradeSubscriptionParams {
   address: string;
@@ -28,6 +26,8 @@ export const useTradeSubscription = ({
   const updateTrades = usePairTradeStore((s) => s.updateTrades);
   const clearTrades = usePairTradeStore((s) => s.clearTrades);
   const seenHashesRef = useRef<Set<string>>(new Set());
+  const pausedQueueRef = useRef<Transaction[]>([]);
+  const isPausedRef = useRef(usePairTradeStore.getState().isTradesPaused);
 
   // Create batcher for trade updates (batched via rAF for 60fps)
   const tradeBatcherRef = useRef<UpdateBatcher<Transaction>>(
@@ -50,16 +50,38 @@ export const useTradeSubscription = ({
   );
 
   useEffect(() => {
+    let previousPaused = isPausedRef.current;
+    const unsubscribe = usePairTradeStore.subscribe((state) => {
+      const paused = state.isTradesPaused;
+      isPausedRef.current = paused;
+
+      if (paused === previousPaused) {
+        return;
+      }
+
+      previousPaused = paused;
+
+      if (!paused && pausedQueueRef.current.length > 0) {
+        const queued = [...pausedQueueRef.current];
+        pausedQueueRef.current = [];
+        queued.forEach((trade) => tradeBatcherRef.current.add(trade));
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!address || !blockchain) return;
 
     clearTrades();
     seenHashesRef.current.clear();
     tradeBatcherRef.current.clear();
+    pausedQueueRef.current = [];
 
-    const client = getClient();
-
-    const subscriptionId = client.streams.subscribe(
-      'fast-trade',
+    const subscription = streams.subscribeFastTrade(
       {
         assetMode: !isPair,
         items: [{ blockchain, address }],
@@ -80,12 +102,23 @@ export const useTradeSubscription = ({
         seenHashesRef.current.add(tradeData.hash);
 
         // Queue trade instead of immediate update (batched via rAF)
-        tradeBatcherRef.current.add(tradeData as Transaction);
+        const normalizedTrade = tradeData as Transaction;
+
+        if (isPausedRef.current) {
+          pausedQueueRef.current.push(normalizedTrade);
+          // Prevent unbounded growth
+          if (pausedQueueRef.current.length > 200) {
+            pausedQueueRef.current.shift();
+          }
+          return;
+        }
+
+        tradeBatcherRef.current.add(normalizedTrade);
       },
     );
 
     return () => {
-      client.streams.unsubscribe('fast-trade', subscriptionId);
+      subscription.unsubscribe();
       tradeBatcherRef.current.clear();
     };
   }, [address, blockchain, isPair, updateTrades, clearTrades]);

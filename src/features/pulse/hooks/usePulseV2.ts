@@ -1,14 +1,16 @@
 'use client';
 
 import { useEffect, useRef, useMemo, useState, useCallback } from 'react';
-import { getMobulaClient } from '@/lib/mobulaClient';
-import type { MobulaClient } from '@mobula_labs/sdk';
+import { sdk, streams } from '@/lib/sdkClient';
 import type { PulseResponse, PulseViewData } from '@mobula_labs/types';
 import { usePulseV2Store } from '@/features/pulse/store/usePulseV2Store';
 import { usePulseFilterStore } from '@/features/pulse/store/usePulseModalFilterStore';
 import usePulseDataStore from '@/features/pulse/store/usePulseDataStore';
 import { ViewName, type PulseToken } from '@/features/pulse/store/usePulseDataStore';
 import { UpdateBatcher } from '@/utils/UpdateBatcher';
+
+// Stream subscription type
+type StreamSubscription = { unsubscribe: () => void };
 
 type WssPulseV2ResponseType =
   | {
@@ -21,6 +23,13 @@ type WssPulseV2ResponseType =
     }
   | {
       type: 'update-token';
+      payload: {
+        viewName: string;
+        token: PulseToken;
+      };
+    }
+  | {
+      type: 'new-token';
       payload: {
         viewName: string;
         token: PulseToken;
@@ -70,8 +79,7 @@ export function usePulseV2(
   blockchain: string,
   { enabled = true, compressed = false }: UsePulseV2Options = {}
 ): UsePulseV2Return {
-  const clientRef = useRef<MobulaClient | null>(null);
-  const subscriptionIdRef = useRef<string | null>(null);
+  const subscriptionRef = useRef<StreamSubscription | null>(null);
   const prevPayloadStrRef = useRef<string>('');
   const pauseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isUnsubscribingRef = useRef(false);
@@ -423,28 +431,6 @@ export function usePulseV2(
     return payload ? JSON.stringify(payload) : '';
   }, [payload]);
 
-  /**
-   * Get or initialize Mobula client
-   */
-  const getClient = useCallback(() => {
-    if (!clientRef.current) {
-      clientRef.current = getMobulaClient();
-
-      if (!clientRef.current) {
-        console.error('[usePulseV2] Failed to get client');
-        setError('Failed to initialize Mobula client');
-        return null;
-      }
-
-      if (!clientRef.current.streams) {
-        console.error('[usePulseV2] Client does not have streams');
-        setError('Client does not support streams');
-        return null;
-      }
-    }
-
-    return clientRef.current;
-  }, [setError]);
 
   /**
    * Process REST response data (same format as WebSocket init)
@@ -499,11 +485,6 @@ export function usePulseV2(
     setLoading(true);
 
     try {
-      const client = getClient();
-      if (!client) {
-        return;
-      }
-
       // Use filter state params from payload, fallback to defaults
       const restPayload = payload
         ? {
@@ -518,7 +499,7 @@ export function usePulseV2(
             chainId: ['solana:solana'],
           };
 
-      const restResponse = await client.fetchPulseV2(restPayload);
+      const restResponse = await sdk.fetchPulseV2(restPayload) as PulseResponse;
       processRestResponse(restResponse);
       initialDataLoadedRef.current = true;
     } catch (e) {
@@ -531,20 +512,20 @@ export function usePulseV2(
       restLoadInProgressRef.current = false;
       setLoading(false);
     }
-  }, [getClient, payload, processRestResponse, setLoading]);
+  }, [payload, processRestResponse, setLoading]);
 
   /**
    * Unsubscribe from old subscription
    */
   const unsubscribeFromOld = useCallback(() => {
-    if (subscriptionIdRef.current && clientRef.current?.streams) {
+    if (subscriptionRef.current) {
       try {
-        clientRef.current.streams.unsubscribe('pulse-v2', subscriptionIdRef.current);
+        subscriptionRef.current.unsubscribe();
       } catch (e) {
         console.warn('[usePulseV2] Unsubscribe error:', e);
       }
     }
-    subscriptionIdRef.current = null;
+    subscriptionRef.current = null;
   }, []);
 
   /**
@@ -570,7 +551,7 @@ export function usePulseV2(
       messageCountRef.current++;
 
       // Log token-specific updates
-      if (msg.type === 'update-token') {
+      if (msg.type === 'update-token' || msg.type === 'new-token') {
         const getViewName = msg.payload.viewName as ViewName;
         const token = msg.payload.token;
         if (PULSE_DEBUG) {
@@ -607,7 +588,7 @@ export function usePulseV2(
    * Prevent concurrent subscription attempts
    * Connects in background after REST data is loaded
    */
-  const subscribeToStream = useCallback(async () => {
+  const subscribeToStream = useCallback(() => {
     if (subscriptionInProgressRef.current) {
       return;
     }
@@ -615,12 +596,11 @@ export function usePulseV2(
     subscriptionInProgressRef.current = true;
 
     try {
-      const client = getClient();
-      if (!client || !payload) {
+      if (!payload) {
         return;
       }
 
-      subscriptionIdRef.current = client.streams.subscribe('pulse-v2', payload, (data: unknown) => {
+      subscriptionRef.current = streams.subscribePulseV2(payload, (data: unknown) => {
         if (
           typeof data === 'object' &&
           data !== null &&
@@ -651,7 +631,7 @@ export function usePulseV2(
     } finally {
       subscriptionInProgressRef.current = false;
     }
-  }, [getClient, payload, payloadStr, handleMessage, setError]);
+  }, [payload, payloadStr, handleMessage, setError]);
 
   /**
    * Load initial data via REST API ONCE on first page load
@@ -681,7 +661,7 @@ export function usePulseV2(
     const payloadChanged = payloadStr !== prevPayloadStrRef.current;
 
     // Skip if nothing changed and already subscribed
-    if (!payloadChanged && subscriptionIdRef.current) {
+    if (!payloadChanged && subscriptionRef.current) {
       return;
     }
 
@@ -764,11 +744,7 @@ export function usePulseV2(
       tokenUpdateBatcherRef.current.clear();
       initBatcherRef.current.clear();
 
-      if (
-        subscriptionIdRef.current &&
-        clientRef.current?.streams &&
-        !isUnsubscribingRef.current
-      ) {
+      if (subscriptionRef.current && !isUnsubscribingRef.current) {
         try {
           unsubscribeFromOld();
         } catch (e) {
@@ -782,18 +758,18 @@ export function usePulseV2(
     data,
     loading,
     error,
-    isConnected: !!subscriptionIdRef.current,
+    isConnected: !!subscriptionRef.current,
     isHydrated,
     hasInitialData: initialDataLoadedRef.current,
     isPaused,
     isReconnecting,
-    isStreaming: !isPaused && !isReconnecting && !!subscriptionIdRef.current,
+    isStreaming: !isPaused && !isReconnecting && !!subscriptionRef.current,
     pauseSubscription,
     resumeSubscription,
     applyFilters,
     resetFilters,
     debugInfo: {
-      subscriptionId: subscriptionIdRef.current,
+      subscriptionId: subscriptionRef.current ? 'active' : null,
       payloadStr,
       lastMessage: lastProcessedMessageRef.current.substring(0, 100),
       messageCount: messageCountRef.current,

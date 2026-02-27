@@ -2,6 +2,17 @@
 import React, { memo, useCallback } from 'react';
 import { FiChevronDown } from 'react-icons/fi';
 
+interface LatencyIndicatorProps {
+  currentUrl: string;
+  latency: string;
+  isApiSelectorOpen: boolean;
+  toggleSelector: () => void;
+  buttonRef: React.RefObject<HTMLButtonElement>;
+  getLabelForUrl: (url: string) => string;
+  displayLabel?: string | null;
+  displayLatency?: string | null;
+}
+
 export const LatencyIndicator = memo(
   ({
     currentUrl,
@@ -10,25 +21,23 @@ export const LatencyIndicator = memo(
     toggleSelector,
     buttonRef,
     getLabelForUrl,
-  }: {
-    currentUrl: string;
-    latency: string;
-    isApiSelectorOpen: boolean;
-    toggleSelector: () => void;
-    buttonRef: React.RefObject<HTMLButtonElement>;
-    getLabelForUrl: (url: string) => string;
-  }) => {
+    displayLabel,
+    displayLatency,
+  }: LatencyIndicatorProps) => {
+    const label = displayLabel ?? getLabelForUrl(currentUrl);
+    const latencyValue = displayLatency ?? latency;
+
     const getLatencyColor = useCallback(() => {
-      if (latency === '...' || latency === 'offline' || latency === 'error') {
+      if (latencyValue === '...' || latencyValue === 'offline' || latencyValue === 'error') {
         return { bg: 'bg-grayGhost/50', text: 'text-red-500' };
       }
 
-      const ms = parseInt(latency);
+      const ms = parseInt(latencyValue, 10);
       if (isNaN(ms)) return { bg: 'bg-grayGhost/50', text: 'text-gray-400' };
       if (ms < 50) return { bg: 'bg-success', text: 'text-success' };
       if (ms < 100) return { bg: 'bg-warning', text: 'text-warning' };
       return { bg: 'bg-error', text: 'text-error' };
-    }, [latency]);
+    }, [latencyValue]);
 
     const { bg, text } = getLatencyColor();
 
@@ -46,13 +55,13 @@ export const LatencyIndicator = memo(
 
         <div className="flex items-center gap-1 text-[12px] font-medium leading-[18px]">
           <span
-            className={`inline-block max-w-[30px] truncate ${text}`}
-            title={getLabelForUrl(currentUrl)}
+            className={`inline-block max-w-[80px] truncate ${text}`}
+            title={label}
           >
-            {getLabelForUrl(currentUrl)}
+            {label}
           </span>
           <span className={`${text}`}>:</span>
-          <span className={`inline-block w-[45px] text-right ${text}`}>{latency}</span>
+          <span className={`inline-block w-[45px] text-right ${text}`}>{latencyValue}</span>
         </div>
 
         <FiChevronDown
@@ -65,7 +74,10 @@ export const LatencyIndicator = memo(
     );
   },
   (prev, next) =>
-    prev.latency === next.latency && prev.isApiSelectorOpen === next.isApiSelectorOpen
+    prev.latency === next.latency &&
+    prev.isApiSelectorOpen === next.isApiSelectorOpen &&
+    prev.displayLabel === next.displayLabel &&
+    prev.displayLatency === next.displayLatency
 );
 
 LatencyIndicator.displayName = 'LatencyIndicator';

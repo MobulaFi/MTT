@@ -98,7 +98,9 @@ export function DevTokensTable({
                         />
                       </div>
                     ) : (
-                      <div className="w-5 h-5 rounded-full bg-success flex-shrink-0" />
+                      <div className="w-5 h-5 rounded-full bg-success/30 flex-shrink-0 flex items-center justify-center text-[10px] text-success font-bold">
+                        {(token.symbol ?? token.name ?? '?').charAt(0).toUpperCase()}
+                      </div>
                     )}
 
                     <Link

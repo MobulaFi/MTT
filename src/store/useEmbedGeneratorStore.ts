@@ -17,6 +17,8 @@ interface EmbedGeneratorState {
   bgColor: string;
   chartWidth: string;
   chartHeight: string;
+  showSymbol: boolean;
+  showGridLines: boolean;
 
   // Actions
   setEmbedType: (type: EmbedType) => void;
@@ -29,6 +31,8 @@ interface EmbedGeneratorState {
   setBgColor: (color: string) => void;
   setChartWidth: (width: string) => void;
   setChartHeight: (height: string) => void;
+  setShowSymbol: (show: boolean) => void;
+  setShowGridLines: (show: boolean) => void;
   reset: () => void;
 }
 
@@ -43,6 +47,8 @@ const defaultState = {
   bgColor: '#121319', // Navy theme default
   chartWidth: '100%',
   chartHeight: '600',
+  showSymbol: true,
+  showGridLines: true,
 };
 
 export const useEmbedGeneratorStore = create<EmbedGeneratorState>((set) => ({
@@ -58,5 +64,7 @@ export const useEmbedGeneratorStore = create<EmbedGeneratorState>((set) => ({
   setBgColor: (color) => set({ bgColor: color }),
   setChartWidth: (width) => set({ chartWidth: width }),
   setChartHeight: (height) => set({ chartHeight: height }),
+  setShowSymbol: (show) => set({ showSymbol: show }),
+  setShowGridLines: (show) => set({ showGridLines: show }),
   reset: () => set(defaultState),
 }));

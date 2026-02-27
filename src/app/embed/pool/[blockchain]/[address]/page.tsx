@@ -70,6 +70,7 @@ export default async function EmbedPoolPage({ params, searchParams }: EmbedPoolP
     priceUSD: marketData.base.priceUSD,
     base: { symbol: marketData.base.symbol ?? undefined },
     quote: { symbol: marketData.quote.symbol ?? undefined },
+    circulatingSupply: marketData.base.circulatingSupply ?? marketData.base.totalSupply ?? 0,
   };
 
   return (
@@ -84,6 +85,9 @@ export default async function EmbedPoolPage({ params, searchParams }: EmbedPoolP
           backgroundColor={embedConfig.bgColor}
           candleUpColor={embedConfig.candleUpColor}
           candleDownColor={embedConfig.candleDownColor}
+          deployer={marketData.base.deployer ?? undefined}
+          showSymbol={embedConfig.showSymbol}
+          showGridLines={embedConfig.showGridLines}
         />
         </div>
         <EmbedBranding bgColor={embedConfig.bgColor} />

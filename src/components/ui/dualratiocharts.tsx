@@ -43,7 +43,6 @@ export default function DualRatioCharts({
     );
   }
 
-  // Map win rate distribution data
   const winRateData = [
     { label: ">500%", value: winRateDistribution?.[">500%"] ?? 0, color: "bg-cyan-400" },
     { label: "200% ~ 500%", value: winRateDistribution?.["200%-500%"] ?? 0, color: "bg-teal-500" },
@@ -53,7 +52,6 @@ export default function DualRatioCharts({
     { label: "< -50%", value: winRateDistribution?.["<-50%"] ?? 0, color: "bg-purple-900" }
   ];
 
-  // Map market cap distribution data
   const marketCapData = [
     { label: ">1000M", value: marketCapDistribution?.[">1000M"] ?? 0, color: "bg-blue-500" },
     { label: ">100M", value: marketCapDistribution?.[">100M"] ?? 0, color: "bg-indigo-500" },
@@ -70,7 +68,6 @@ export default function DualRatioCharts({
       {/* Win Rate Distribution */}
       <div className="flex-1 flex flex-col">
         <h4 className="text-xs text-textTertiary font-medium mb-3">Win Rate Distribution</h4>
-        {/* Legend */}
         <div className="space-y-1 mb-3 flex-1">
           {winRateData.map((item, i) => (
             <div key={i} className="flex items-center justify-between text-xs">
@@ -82,19 +79,13 @@ export default function DualRatioCharts({
             </div>
           ))}
         </div>
-
-        {/* Bar Chart */}
         <div className="flex h-1 rounded-full overflow-hidden bg-bgMuted">
           {totalWinRate > 0 ? (
             winRateData.map((item, i) => {
               const percentage = (item.value / totalWinRate) * 100;
               if (percentage === 0) return null;
               return (
-                <div
-                  key={i}
-                  className={item.color}
-                  style={{ width: `${percentage}%` }}
-                ></div>
+                <div key={i} className={item.color} style={{ width: `${percentage}%` }}></div>
               );
             })
           ) : (
@@ -106,7 +97,6 @@ export default function DualRatioCharts({
       {/* Market Cap Distribution */}
       <div className="flex-1 flex flex-col">
         <h4 className="text-xs text-textTertiary font-medium mb-3">Market Cap Distribution</h4>
-        {/* Legend */}
         <div className="space-y-1 mb-3 flex-1">
           {marketCapData.map((item, i) => (
             <div key={i} className="flex items-center justify-between text-xs">
@@ -118,19 +108,13 @@ export default function DualRatioCharts({
             </div>
           ))}
         </div>
-
-        {/* Bar Chart */}
         <div className="flex h-1 rounded-full overflow-hidden bg-bgMuted">
           {totalMarketCap > 0 ? (
             marketCapData.map((item, i) => {
               const percentage = (item.value / totalMarketCap) * 100;
               if (percentage === 0) return null;
               return (
-                <div
-                  key={i}
-                  className={item.color}
-                  style={{ width: `${percentage}%` }}
-                ></div>
+                <div key={i} className={item.color} style={{ width: `${percentage}%` }}></div>
               );
             })
           ) : (

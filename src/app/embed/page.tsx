@@ -23,6 +23,8 @@ function EmbedPageContent() {
     bgColor,
     chartWidth,
     chartHeight,
+    showSymbol,
+    showGridLines,
     setEmbedType,
     setChain,
     setAddress,
@@ -33,6 +35,8 @@ function EmbedPageContent() {
     setBgColor,
     setChartWidth,
     setChartHeight,
+    setShowSymbol,
+    setShowGridLines,
   } = useEmbedGeneratorStore();
 
   const { chains, loading: chainsLoading } = useChainsAndProtocols('new-pairs');
@@ -368,7 +372,7 @@ function EmbedPageContent() {
     
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
     const route = embedType === 'token' ? 'embed/token' : 'embed/pool';
-    const url = new URL(`${baseUrl}/${route}/${encodeURIComponent(chain)}/${address}`);
+    const url = new URL(`${baseUrl}/${route}/${chain}/${address}`);
     
     url.searchParams.set('embed', '1');
     url.searchParams.set('resolution', resolution);
@@ -386,9 +390,11 @@ function EmbedPageContent() {
     if (candleDownColor) {
       url.searchParams.set('candle_down_color', candleDownColor.replace('#', ''));
     }
+    url.searchParams.set('show_symbol', showSymbol ? '1' : '0');
+    url.searchParams.set('show_grid_lines', showGridLines ? '1' : '0');
     
     return url.toString();
-  }, [embedType, chain, address, resolution, theme, bgColor, candleUpColor, candleDownColor]);
+  }, [embedType, chain, address, resolution, theme, bgColor, candleUpColor, candleDownColor, showSymbol, showGridLines]);
 
   // Generate iframe code
   const iframeCode = useMemo(() => {
@@ -815,6 +821,48 @@ function EmbedPageContent() {
                     />
                   </div>
                 </div>
+                <div className="flex items-center justify-between">
+                  <label htmlFor="showSymbol" className="text-xs sm:text-sm font-medium text-textTertiary">
+                    Show Symbol
+                  </label>
+                  <button
+                    id="showSymbol"
+                    type="button"
+                    role="switch"
+                    aria-checked={showSymbol}
+                    onClick={() => setShowSymbol(!showSymbol)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-success focus:ring-offset-2 focus:ring-offset-bgOverlay ${
+                      showSymbol ? 'bg-success' : 'bg-bgContainer border border-borderDefault'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        showSymbol ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between">
+                  <label htmlFor="showGridLines" className="text-xs sm:text-sm font-medium text-textTertiary">
+                    Show Grid Lines
+                  </label>
+                  <button
+                    id="showGridLines"
+                    type="button"
+                    role="switch"
+                    aria-checked={showGridLines}
+                    onClick={() => setShowGridLines(!showGridLines)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-success focus:ring-offset-2 focus:ring-offset-bgOverlay ${
+                      showGridLines ? 'bg-success' : 'bg-bgContainer border border-borderDefault'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        showGridLines ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -862,7 +910,7 @@ function EmbedPageContent() {
               <h3 className="text-xs sm:text-sm font-semibold text-textPrimary mb-2">Notes</h3>
               <p className="text-xs sm:text-sm text-textSecondary leading-relaxed">
                 You can use charts for multiple tokens by replacing the Mobula URL with your pool or token address.
-                More embed options are available in Mobula by clicking "Share" then "Embed Charts".
+                More embed options are available in Mobula by clicking &quot;Share&quot; then &quot;Embed Charts&quot;.
               </p>
             </div>
           </div>
