@@ -21,7 +21,7 @@ interface PnlCalendarProps {
     isOpen: boolean;
     onClose: () => void;
     walletAddress: string;
-    blockchain: string;
+    blockchain?: string;
     onDayClick?: (date: Date) => void;
 }
 
@@ -87,26 +87,26 @@ export function PnlCalendar({
     
     // Fetch data for the current month
     const fetchMonthData = useCallback(async (targetYear: number, targetMonth: number) => {
-        if (!walletAddress || !blockchain) return;
-        
+        if (!walletAddress) return;
+
         // Calculate from/to timestamps for the month
         const fromDate = new Date(targetYear, targetMonth, 1);
         const toDate = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59, 999);
-        
+
         const fetchKey = `${walletAddress}-${targetYear}-${targetMonth}`;
-        
+
         // Skip if already fetched this exact month
         if (lastFetchRef.current === fetchKey) return;
-        
+
         calendarRequestId++;
         const thisRequestId = calendarRequestId;
-        
+
         setIsLoading(true);
-        
+
         try {
             const res = await sdk.fetchWalletAnalysis({
                 wallet: walletAddress,
-                blockchain: blockchain,
+                ...(blockchain ? { blockchains: blockchain } : {}),
                 period: '90d',
                 from: fromDate.getTime(),
                 to: toDate.getTime(),

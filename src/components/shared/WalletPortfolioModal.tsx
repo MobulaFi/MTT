@@ -98,8 +98,8 @@ export function WalletPortfolioModal() {
     const decodedPathname = pathname ? decodeURIComponent(pathname) : '';
     const pathParts = decodedPathname.split('/');
     const chainPart = pathParts.find(p => p.includes(':'));
-    // Use the full chain ID, not just the prefix
-    const extractedBlockchain = chainPart ?? 'solana:solana';
+    // Use the full chain ID if available, otherwise null (API will handle all-chain)
+    const extractedBlockchain = chainPart ?? null;
     
     // Don't re-open if we just closed the modal intentionally
     if (justClosedRef.current) {
@@ -710,7 +710,7 @@ export function WalletPortfolioModal() {
         isOpen={isCalendarOpen}
         onClose={() => setIsCalendarOpen(false)}
         walletAddress={walletAddress}
-        blockchain={blockchain ?? 'solana:solana'}
+        blockchain={blockchain ?? undefined}
         onDayClick={handleCalendarDayClick}
       />
     </Dialog>

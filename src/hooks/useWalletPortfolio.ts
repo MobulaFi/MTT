@@ -27,7 +27,7 @@ export function useWalletPortfolio(walletAddress?: string, blockchain?: string) 
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    if (!walletAddress || !blockchain) return;
+    if (!walletAddress) return;
 
     const fetchWalletData = async () => {
       try {
@@ -36,15 +36,15 @@ export function useWalletPortfolio(walletAddress?: string, blockchain?: string) 
         const [portfolioRes, positionsRes, walletActivityRes] = await Promise.all([
           sdk.fetchWalletPortfolio({
             wallet: walletAddress,
-            blockchains: blockchain,
+            ...(blockchain ? { blockchains: blockchain } : {}),
           }),
           sdk.fetchWalletPositions({
             wallet: walletAddress,
-            blockchain,
+            ...(blockchain ? { blockchains: blockchain } : {}),
           }),
           sdk.fetchWalletActivity({
             wallet: walletAddress,
-            blockchains: blockchain,
+            ...(blockchain ? { blockchains: blockchain } : {}),
             limit: 100
           }),
         ]);
@@ -80,13 +80,13 @@ export function useWalletPortfolio(walletAddress?: string, blockchain?: string) 
   ]);
 
   const fetchWalletHistoryData = useCallback(async (days: number, fromTimestamp?: number, toTimestamp?: number) => {
-    if (!walletAddress || !blockchain) return;
-    
+    if (!walletAddress) return;
+
     try {
       setHistoryLoading(true);
       const response = await sdk.fetchWalletHistory({
         wallet: walletAddress,
-        blockchains: blockchain,
+        ...(blockchain ? { blockchains: blockchain } : {}),
         from: fromTimestamp?.toString(),
         to: toTimestamp?.toString(),
       });
@@ -106,13 +106,13 @@ export function useWalletPortfolio(walletAddress?: string, blockchain?: string) 
   }, [walletAddress, blockchain, setHistoryLoading, setWalletHistory]);
 
   const refetchActivity = useCallback(async (filters?: { from?: number; to?: number; order?: 'asc' | 'desc' }) => {
-    if (!walletAddress || !blockchain) return;
-    
+    if (!walletAddress) return;
+
     try {
       setActivityLoading(true);
       const response = await sdk.fetchWalletActivity({
         wallet: walletAddress,
-        blockchains: blockchain,
+        ...(blockchain ? { blockchains: blockchain } : {}),
         limit: 100,
         ...filters,
       });

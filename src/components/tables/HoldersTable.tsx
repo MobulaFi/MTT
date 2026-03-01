@@ -19,8 +19,10 @@ interface WalletMetadata {
 
 // Component to display wallet entity info (CEX, market maker, etc.)
 function WalletEntityBadge({ metadata, compact = false }: { metadata?: WalletMetadata | null; compact?: boolean }) {
-  if (!metadata?.entityName) return null;
-  
+  if (!metadata?.entityName && (!metadata?.entityLabels || metadata.entityLabels.length === 0)) return null;
+
+  const displayName = metadata.entityName || metadata.entityLabels?.[0] || null;
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -28,17 +30,17 @@ function WalletEntityBadge({ metadata, compact = false }: { metadata?: WalletMet
           compact ? 'text-[8px]' : 'text-[9px]'
         } font-semibold text-amber-400`}>
           {metadata.entityLogo ? (
-            <img 
-              src={metadata.entityLogo} 
-              width={compact ? 10 : 12} 
-              height={compact ? 10 : 12} 
-              alt="" 
+            <img
+              src={metadata.entityLogo}
+              width={compact ? 10 : 12}
+              height={compact ? 10 : 12}
+              alt=""
               className="rounded-full"
             />
           ) : (
             <Building2 size={compact ? 10 : 12} />
           )}
-          {!compact && metadata.entityName}
+          {!compact && displayName}
         </span>
       </TooltipTrigger>
       <TooltipContent side="top" className="text-[10px]">
@@ -47,9 +49,9 @@ function WalletEntityBadge({ metadata, compact = false }: { metadata?: WalletMet
             {metadata.entityLogo && (
               <img src={metadata.entityLogo} width={14} height={14} alt="" className="rounded-full" />
             )}
-            <span className="font-semibold text-white">{metadata.entityName}</span>
+            <span className="font-semibold text-white">{displayName}</span>
           </div>
-          {metadata.entityLabels.length > 0 && (
+          {metadata.entityLabels && metadata.entityLabels.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-0.5">
               {metadata.entityLabels.map((label) => (
                 <span key={label} className="px-1 py-0.5 bg-bgTertiary rounded text-[9px] text-grayGhost">

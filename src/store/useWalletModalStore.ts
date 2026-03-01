@@ -10,7 +10,7 @@ interface WalletModalState {
   openWalletModal: (params: {
     walletAddress: string;
     txHash?: string;
-    blockchain: string;
+    blockchain?: string;
   }) => void;
   closeWalletModal: () => void;
   syncFromUrl: (params: {
@@ -42,7 +42,7 @@ export const useWalletModalStore = create<WalletModalState>((set) => ({
 
   openWalletModal: ({ walletAddress, txHash, blockchain }) => {
     updateUrlParam(walletAddress);
-    set({ isOpen: true, walletAddress, txHash: txHash ?? null, blockchain, justClosed: false });
+    set({ isOpen: true, walletAddress, txHash: txHash ?? null, blockchain: blockchain ?? null, justClosed: false });
   },
 
   closeWalletModal: () => {
@@ -51,8 +51,8 @@ export const useWalletModalStore = create<WalletModalState>((set) => ({
   },
 
   syncFromUrl: ({ walletAddress, blockchain }) => {
-    if (walletAddress && blockchain) {
-      set({ isOpen: true, walletAddress, txHash: null, blockchain, justClosed: false });
+    if (walletAddress) {
+      set({ isOpen: true, walletAddress, txHash: null, blockchain: blockchain ?? null, justClosed: false });
     }
   },
 

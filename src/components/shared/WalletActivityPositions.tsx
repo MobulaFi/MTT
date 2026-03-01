@@ -477,7 +477,7 @@ export function WalletActivityPosition({ hideDust = false, refetchActivity }: Wa
     useEffect(() => {
         console.log('[Activity] useEffect triggered - assetFilter:', assetFilter, 'walletAddress:', walletAddress, 'blockchain:', blockchain);
         
-        if (!assetFilter || !walletAddress || !blockchain) {
+        if (!assetFilter || !walletAddress) {
             console.log('[Activity] Missing required params, clearing filtered trades');
             setFilteredTrades(null);
             return;

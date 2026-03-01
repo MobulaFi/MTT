@@ -220,7 +220,8 @@ type SdkMethod =
   | 'fetchPulseV2'
   | 'fetchSystemMetadata'
   | 'swapSend'
-  | 'fetchWalletPosition';
+  | 'fetchWalletPosition'
+  | 'fetchMarketLighthouse';
 
 /**
  * Call SDK method - routes to /api/sdk in server mode, direct SDK in client mode
@@ -292,6 +293,8 @@ async function callSdk<T>(method: SdkMethod, params: Record<string, unknown>): P
       return client.fetchSwapTransaction(params as Parameters<typeof client.fetchSwapTransaction>[0]) as Promise<T>;
     case 'fetchWalletPosition':
       return client.fetchWalletPosition(params as Parameters<typeof client.fetchWalletPosition>[0]) as Promise<T>;
+    case 'fetchMarketLighthouse':
+      return client.request<Record<string, unknown>, T>('get', '/api/2/market/lighthouse', params as Record<string, unknown>) as Promise<T>;
     default:
       throw new Error(`Unknown method: ${method}`);
   }
@@ -364,6 +367,9 @@ export const sdk = {
     
   fetchWalletPosition: (params: WalletPositionParams) =>
     callSdk('fetchWalletPosition', params),
+
+  fetchMarketLighthouse: (params?: { blockchains?: string }) =>
+    callSdk('fetchMarketLighthouse', params ?? {}),
 };
 
 // ============================================================================

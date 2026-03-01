@@ -8,14 +8,14 @@ export function useWalletAnalysis(walletAddress?: string, blockchain?: string) {
   const { timeframe, setData, setLoading } = useWalletAnalysisStore();
 
   useEffect(() => {
-    if (!walletAddress || !blockchain) return;
+    if (!walletAddress) return;
 
     const fetchData = async () => {
       try {
         setLoading(true);
         const res = await sdk.fetchWalletAnalysis({
           wallet: walletAddress,
-          blockchain: blockchain,
+          ...(blockchain ? { blockchains: blockchain } : {}),
           period: timeframe,
         }) as WalletAnalysisResponse;
         setData(res);

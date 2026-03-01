@@ -14,20 +14,21 @@ import { PoolType } from '@mobula_labs/sdk';
 import SafeImage, { validateImageUrl } from './SafeImage';
 
 // Helper to detect if input looks like a wallet address
-const isLikelyWalletAddress = (input: string): { isAddress: boolean; blockchain: string } => {
+const isLikelyWalletAddress = (input: string): { isAddress: boolean; blockchain?: string } => {
   const trimmed = input.trim();
-  
+
   // EVM address: 0x followed by 40 hex chars
+  // Don't default to a specific chain — the API handles all-chain lookup
   if (/^0x[a-fA-F0-9]{40}$/i.test(trimmed)) {
-    return { isAddress: true, blockchain: 'evm:1' }; // Default to Ethereum
+    return { isAddress: true };
   }
-  
+
   // Solana address: 32-44 base58 chars (no 0, O, I, l)
   if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(trimmed)) {
     return { isAddress: true, blockchain: 'solana:solana' };
   }
-  
-  return { isAddress: false, blockchain: '' };
+
+  return { isAddress: false };
 };
 
 const sortOptions = [
@@ -185,14 +186,14 @@ export const SearchModal = ({
   // Handle opening wallet analysis
   const handleOpenWalletAnalysis = () => {
     if (addressCheck.isAddress) {
-      // Use selected chain if available, otherwise use detected blockchain
-      const blockchain = selectedChain !== 'All chains' 
-        ? blockchainMap[selectedChain] 
+      // Use selected chain if available, otherwise use detected blockchain (undefined for EVM = all-chain)
+      const blockchain = selectedChain !== 'All chains'
+        ? blockchainMap[selectedChain]
         : addressCheck.blockchain;
-      
+
       openWalletModal({
         walletAddress: input.trim(),
-        blockchain: blockchain || 'solana:solana',
+        ...(blockchain ? { blockchain } : {}),
       });
       onClose();
     }

@@ -53,7 +53,8 @@ type SdkMethod =
   | 'fetchPulseV2'
   | 'fetchSystemMetadata'
   | 'swapSend'
-  | 'fetchWalletPosition';
+  | 'fetchWalletPosition'
+  | 'fetchMarketLighthouse';
 
 interface SdkRequest {
   method: SdkMethod;
@@ -141,6 +142,13 @@ export async function POST(request: NextRequest) {
         response = await client.request<typeof params, unknown>(
           'get',
           '/api/2/wallet/position',
+          params as Record<string, unknown>,
+        );
+        break;
+      case 'fetchMarketLighthouse':
+        response = await client.request<typeof params, unknown>(
+          'get',
+          '/api/2/market/lighthouse',
           params as Record<string, unknown>,
         );
         break;
