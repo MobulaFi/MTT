@@ -4,7 +4,6 @@ import { useMemo } from 'react';
 import { FiX } from 'react-icons/fi';
 import { ArrowUpDown } from 'lucide-react';
 import { formatPercentage } from '@mobula_labs/sdk';
-import SafeImage from '@/components/SafeImage';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatCompactNumber } from '@/utils/tokenMetrics';
 import { useLighthouseData } from '../hooks/useLighthouseData';
@@ -105,7 +104,7 @@ export function LighthousePopover({ isOpen, onClose }: LighthousePopoverProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="absolute bottom-full left-0 mb-1 w-[700px] max-h-[70vh] bg-bgPrimary border border-borderDefault rounded-lg shadow-2xl flex flex-col overflow-hidden z-[9999] animate-in slide-in-from-bottom-2 fade-in duration-150">
+    <div className="absolute bottom-full left-0 mb-1 w-[700px] h-[70vh] bg-bgPrimary border border-borderDefault rounded-lg shadow-2xl flex flex-col overflow-hidden z-[9999] animate-in slide-in-from-bottom-2 fade-in duration-150">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-borderDefault">
         <span className="text-sm font-semibold text-textPrimary">Lighthouse</span>
@@ -208,7 +207,7 @@ export function LighthousePopover({ isOpen, onClose }: LighthousePopoverProps) {
                     <td className="px-2 py-1.5">
                       <div className="flex items-center gap-1.5 min-w-0">
                         {logo ? (
-                          <SafeImage src={logo} alt={name} width={18} height={18} className="rounded-full flex-shrink-0" />
+                          <img src={logo} alt={name} width={18} height={18} className="rounded-full flex-shrink-0 object-cover" />
                         ) : (
                           <div className="w-[18px] h-[18px] rounded-full bg-bgContainer flex-shrink-0" />
                         )}
