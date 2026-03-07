@@ -203,15 +203,25 @@ const Header = () => {
               >
                 Pulse
               </Link>
-              <Link 
-                href="/embed" 
+              <Link
+                href="/embed"
                 className={`text-sm transition-colors whitespace-nowrap ${
-                  pathname?.startsWith('/embed') 
-                    ? 'text-white font-semibold' 
+                  pathname?.startsWith('/embed')
+                    ? 'text-white font-semibold'
                     : 'text-white/70 hover:text-white'
                 }`}
               >
                 Widgets
+              </Link>
+              <Link
+                href="/x-tracker"
+                className={`text-sm transition-colors whitespace-nowrap ${
+                  pathname?.startsWith('/x-tracker')
+                    ? 'text-white font-semibold'
+                    : 'text-white/70 hover:text-white'
+                }`}
+              >
+                X Tracker
               </Link>
             </nav>
           </div>

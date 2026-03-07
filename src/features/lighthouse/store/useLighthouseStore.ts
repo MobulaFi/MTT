@@ -11,10 +11,20 @@ interface LighthouseState {
   activeTab: ActiveTab;
   sortField: SortField;
   sortDirection: SortDirection;
+
+  // Floating panel
+  isFloating: boolean;
+  windowPosition: { x: number; y: number };
+  isDragging: boolean;
+
   setTimeframe: (tf: Timeframe) => void;
   setActiveTab: (tab: ActiveTab) => void;
   setSortField: (field: SortField) => void;
   toggleSortDirection: () => void;
+
+  setFloating: (floating: boolean) => void;
+  setWindowPosition: (position: { x: number; y: number }) => void;
+  setIsDragging: (isDragging: boolean) => void;
 }
 
 export const useLighthouseStore = create<LighthouseState>()(
@@ -24,6 +34,11 @@ export const useLighthouseStore = create<LighthouseState>()(
       activeTab: 'byChain',
       sortField: 'volumeUSD',
       sortDirection: 'desc',
+
+      isFloating: false,
+      windowPosition: { x: 50, y: 100 },
+      isDragging: false,
+
       setTimeframe: (timeframe) => set({ timeframe }),
       setActiveTab: (activeTab) => set({ activeTab }),
       setSortField: (field) =>
@@ -33,7 +48,20 @@ export const useLighthouseStore = create<LighthouseState>()(
         })),
       toggleSortDirection: () =>
         set((state) => ({ sortDirection: state.sortDirection === 'desc' ? 'asc' : 'desc' })),
+
+      setFloating: (floating) => set({ isFloating: floating }),
+      setWindowPosition: (position) => set({ windowPosition: position }),
+      setIsDragging: (isDragging) => set({ isDragging }),
     }),
-    { name: 'lighthouse-prefs' },
+    {
+      name: 'lighthouse-prefs',
+      partialize: (state) => ({
+        timeframe: state.timeframe,
+        activeTab: state.activeTab,
+        sortField: state.sortField,
+        sortDirection: state.sortDirection,
+        windowPosition: state.windowPosition,
+      }),
+    },
   ),
 );

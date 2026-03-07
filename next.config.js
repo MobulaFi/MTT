@@ -32,6 +32,7 @@ const nextConfig = {
       'viem',
     ],
   },
+  serverExternalPackages: ['ws'],
   poweredByHeader: false,
   compress: true,
 };

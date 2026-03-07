@@ -1,12 +1,14 @@
 'use client';
 
 import { useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { FiX } from 'react-icons/fi';
 import { ArrowUpDown } from 'lucide-react';
 import { formatPercentage } from '@mobula_labs/sdk';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatCompactNumber } from '@/utils/tokenMetrics';
 import { useLighthouseData } from '../hooks/useLighthouseData';
+import { useDragAndDrop } from '@/hooks/trading/useDragAndDrop';
 import {
   useLighthouseStore,
   type Timeframe,
@@ -81,8 +83,20 @@ function TableSkeleton() {
 
 export function LighthousePopover({ isOpen, onClose }: LighthousePopoverProps) {
   const { data, loading, error } = useLighthouseData(isOpen);
-  const { timeframe, activeTab, sortField, sortDirection, setTimeframe, setActiveTab, setSortField } =
-    useLighthouseStore();
+  const {
+    timeframe, activeTab, sortField, sortDirection,
+    isFloating, windowPosition,
+    setTimeframe, setActiveTab, setSortField,
+    setFloating, setWindowPosition, setIsDragging,
+  } = useLighthouseStore();
+
+  const { windowRef, isDragging, handleMouseDown } = useDragAndDrop({
+    position: windowPosition,
+    isFloating,
+    onPositionChange: setWindowPosition,
+    onDragStart: () => setIsDragging(true),
+    onDragEnd: () => setIsDragging(false),
+  });
 
   const entries = useMemo(() => {
     if (!data?.data) return [];
@@ -103,10 +117,20 @@ export function LighthousePopover({ isOpen, onClose }: LighthousePopoverProps) {
 
   if (!isOpen) return null;
 
-  return (
-    <div className="absolute bottom-full left-0 mb-1 w-[700px] h-[70vh] bg-bgPrimary border border-borderDefault rounded-lg shadow-2xl flex flex-col overflow-hidden z-[9999] animate-in slide-in-from-bottom-2 fade-in duration-150">
+  const handleClose = () => {
+    if (isFloating) setFloating(false);
+    onClose();
+  };
+
+  const popoverContent = (
+    <>
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-borderDefault">
+      <div
+        onMouseDown={isFloating ? handleMouseDown : undefined}
+        className={`flex items-center justify-between px-3 py-2 border-b border-borderDefault ${
+          isFloating && isDragging ? 'cursor-grabbing' : isFloating ? 'cursor-grab' : ''
+        }`}
+      >
         <span className="text-sm font-semibold text-textPrimary">Lighthouse</span>
         <div className="flex items-center gap-1">
           {TIMEFRAMES.map((tf) => (
@@ -122,7 +146,7 @@ export function LighthousePopover({ isOpen, onClose }: LighthousePopoverProps) {
               {tf.label}
             </button>
           ))}
-          <button onClick={onClose} className="ml-2 p-1 text-textTertiary hover:text-textPrimary rounded transition-colors">
+          <button onClick={handleClose} className="ml-2 p-1 text-textTertiary hover:text-textPrimary rounded transition-colors">
             <FiX size={14} />
           </button>
         </div>
@@ -246,6 +270,33 @@ export function LighthousePopover({ isOpen, onClose }: LighthousePopoverProps) {
           </table>
         )}
       </div>
+    </>
+  );
+
+  // Floating mode: render via portal
+  if (isFloating && typeof document !== 'undefined') {
+    return createPortal(
+      <div
+        ref={windowRef}
+        style={{
+          position: 'fixed',
+          left: 0,
+          top: 0,
+          transform: `translate(${windowPosition.x}px, ${windowPosition.y}px)`,
+          transition: isDragging ? 'none' : 'transform 0.2s ease-out',
+        }}
+        className="w-[700px] h-[70vh] z-[100] overflow-hidden rounded-md border border-borderDefault bg-bgPrimary shadow-lg flex flex-col"
+      >
+        {popoverContent}
+      </div>,
+      document.body,
+    );
+  }
+
+  // Default: anchored popover (original behavior)
+  return (
+    <div className="absolute bottom-full left-0 mb-1 w-[700px] h-[70vh] bg-bgPrimary border border-borderDefault rounded-lg shadow-2xl flex flex-col overflow-hidden z-[9999] animate-in slide-in-from-bottom-2 fade-in duration-150">
+      {popoverContent}
     </div>
   );
 }
