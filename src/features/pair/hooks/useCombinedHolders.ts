@@ -28,6 +28,7 @@ export const useCombinedHolders = (tokenAddress: string, blockchain: string) => 
           blockchain,
           address: tokenAddress,
           limit: 100,
+          useSwapRecipient: true,
         }) as TokenPositionsResponse;
 
         if (response?.data) {

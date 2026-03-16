@@ -64,6 +64,7 @@ export function useTopTradersData({ tokenAddress, blockchain }: UseTopTradersDat
         const requestParams: TokenPositionsParams = {
           address: tokenAddress,
           blockchain: blockchain,
+          useSwapRecipient: true,
         };
 
         if (filtersToUse.label) {

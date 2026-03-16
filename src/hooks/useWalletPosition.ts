@@ -128,6 +128,7 @@ export function useWalletPosition() {
             token: sellTokenAddress,
             blockchain: sellBlockchain,
             subscriptionTracking: true,
+            useSwapRecipient: true,
           },
           (data: unknown) => {
             const positionData = data as PositionData;
@@ -169,6 +170,7 @@ export function useWalletPosition() {
             token: nativeTokenAddress,
             blockchain: blockchain,
             subscriptionTracking: true,
+            useSwapRecipient: true,
           },
           (data: unknown) => {
             const positionData = data as PositionData;

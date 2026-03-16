@@ -41,6 +41,7 @@ export function useWalletPortfolio(walletAddress?: string, blockchain?: string) 
           sdk.fetchWalletPositions({
             wallet: walletAddress,
             ...(blockchain ? { blockchains: blockchain } : {}),
+            useSwapRecipient: true,
           }),
           sdk.fetchWalletActivity({
             wallet: walletAddress,

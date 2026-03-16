@@ -474,6 +474,7 @@ const TradesTableComponent = ({
         sortOrder: orderBy,
         mode: isPair ? "pair" : "asset",
         formatted: true,
+        useSwapRecipient: true,
         ...(currentFilters.wallet && {
           transactionSenderAddresses: currentFilters.wallet,
         }),
