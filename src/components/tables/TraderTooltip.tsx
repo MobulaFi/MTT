@@ -141,6 +141,7 @@ export function TraderTooltip({
         blockchain,
         asset: assetAddress,
         useSwapRecipient: true,
+        includeFees: true,
       }) as WalletPositionResponse;
 
       const normalized = normalizePosition(response.data);

@@ -1,19 +1,36 @@
 import { create } from 'zustand';
 import type { TokenPositionsOutputResponse } from '@mobula_labs/types';
+import { applyTradesToPositions } from '@/utils/applyTradesToPositions';
 
 // Sort field options for the holders table
-export type HolderSortField = 
-  | 'balance' 
-  | 'balanceUSD' 
-  | 'bought' 
-  | 'sold' 
-  | 'pnl' 
+export type HolderSortField =
+  | 'balance'
+  | 'balanceUSD'
+  | 'bought'
+  | 'sold'
+  | 'pnl'
   | 'remaining'
   | 'lastActive'
   | 'avgBuy'
   | 'avgSell';
 
 export type SortDirection = 'asc' | 'desc';
+
+export interface StreamTradeEvent {
+  sender: string;
+  swapRecipient?: string | null;
+  type: 'buy' | 'sell';
+  tokenAmount: number;
+  tokenAmountUsd: number;
+  tokenPrice: number;
+  timestamp: number;
+  blockchain: string;
+  hash: string;
+  labels?: string[];
+  walletMetadata?: TokenPositionsOutputResponse['walletMetadata'];
+  token?: string;
+  event?: string;
+}
 
 interface PairHoldersState {
   holders: TokenPositionsOutputResponse[];
@@ -22,14 +39,14 @@ interface PairHoldersState {
   blockchain: string;
   tokenPrice: number;
   totalSupply: number;
-  
+
   // Sorting
   sortField: HolderSortField;
   sortDirection: SortDirection;
-  
+
   // Filtering
   labelFilter: string | null;
-  
+
   // Actions
   setHolders: (holders: TokenPositionsOutputResponse[]) => void;
   setHoldersCount: (count: number) => void;
@@ -41,6 +58,7 @@ interface PairHoldersState {
   setSortDirection: (direction: SortDirection) => void;
   toggleSort: (field: HolderSortField) => void;
   setLabelFilter: (label: string | null) => void;
+  upsertFromTrades: (trades: StreamTradeEvent[]) => void;
   clearHolders: () => void;
 }
 
@@ -54,7 +72,7 @@ export const usePairHoldersStore = create<PairHoldersState>((set, get) => ({
   sortField: 'balance',
   sortDirection: 'desc',
   labelFilter: null,
-  
+
   setHolders: (holders) => set({ holders }),
   setHoldersCount: (count) => set({ holdersCount: count }),
   setBlockchain: (blockchain) => set({ blockchain }),
@@ -63,7 +81,7 @@ export const usePairHoldersStore = create<PairHoldersState>((set, get) => ({
   setTotalSupply: (supply) => set({ totalSupply: supply }),
   setSortField: (field) => set({ sortField: field }),
   setSortDirection: (direction) => set({ sortDirection: direction }),
-  
+
   toggleSort: (field) => {
     const { sortField, sortDirection } = get();
     if (sortField === field) {
@@ -72,14 +90,30 @@ export const usePairHoldersStore = create<PairHoldersState>((set, get) => ({
       set({ sortField: field, sortDirection: 'desc' });
     }
   },
-  
+
   setLabelFilter: (label) => set({ labelFilter: label }),
-  
+
+  upsertFromTrades: (trades) => {
+    const state = get();
+    if (state.holders.length === 0) return;
+
+    const { positions, countDelta } = applyTradesToPositions(
+      state.holders,
+      trades,
+      { removeZeroBalance: true },
+    );
+
+    set({
+      holders: positions,
+      holdersCount: state.holdersCount + countDelta,
+    });
+  },
+
   clearHolders: () =>
-    set({ 
-      holders: [], 
-      holdersCount: 0, 
-      loading: false, 
+    set({
+      holders: [],
+      holdersCount: 0,
+      loading: false,
       blockchain: '',
       tokenPrice: 0,
       totalSupply: 0,

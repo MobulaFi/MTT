@@ -1,0 +1,168 @@
+import type { TokenPositionsOutputResponse } from '@mobula_labs/types';
+import type { StreamTradeEvent } from '@/features/pair/store/usePairHolderStore';
+
+interface ApplyTradesOptions {
+  /** Remove holders whose balance reaches 0 after a sell (used for holders view) */
+  removeZeroBalance?: boolean;
+}
+
+interface ApplyTradesResult {
+  positions: TokenPositionsOutputResponse[];
+  countDelta: number;
+}
+
+/** Convert a timestamp that may be in seconds or milliseconds to a Date */
+function toDate(ts: number): Date {
+  return new Date(ts > 1e12 ? ts : ts * 1000);
+}
+
+export function applyTradesToPositions(
+  positions: TokenPositionsOutputResponse[],
+  trades: StreamTradeEvent[],
+  options: ApplyTradesOptions = {},
+): ApplyTradesResult {
+  const { removeZeroBalance = false } = options;
+
+  const items = [...positions];
+  const walletIndex = new Map<string, number>();
+  items.forEach((h, i) => walletIndex.set(h.walletAddress.toLowerCase(), i));
+
+  let countDelta = 0;
+
+  // Find liquidity pool position to update its reserves
+  let poolIdx = items.findIndex((p) => p.labels?.includes('liquidityPool'));
+
+  for (const trade of trades) {
+    const wallet = (trade.swapRecipient || trade.sender)?.toLowerCase();
+    if (!wallet) continue;
+
+    const idx = walletIndex.get(wallet);
+    const isBuy = trade.type === 'buy';
+    const tradeAmt = trade.tokenAmount || 0;
+
+    if (idx !== undefined) {
+      const h = { ...items[idx] };
+      const prevBalance = Number(h.tokenAmount) || 0;
+      const tradeUsd = trade.tokenAmountUsd || 0;
+
+      // Update balance
+      h.tokenAmount = String(
+        isBuy ? prevBalance + tradeAmt : Math.max(0, prevBalance - tradeAmt),
+      );
+
+      // Update counters & volumes
+      if (isBuy) {
+        h.buys = (h.buys || 0) + 1;
+        h.volumeBuyUSD = String((Number(h.volumeBuyUSD) || 0) + tradeUsd);
+        h.volumeBuyToken = String((Number(h.volumeBuyToken) || 0) + tradeAmt);
+      } else {
+        h.sells = (h.sells || 0) + 1;
+        h.volumeSellUSD = String((Number(h.volumeSellUSD) || 0) + tradeUsd);
+        h.volumeSellToken = String((Number(h.volumeSellToken) || 0) + tradeAmt);
+      }
+
+      // Recalculate avg prices
+      const totalBuyTokens = Number(h.volumeBuyToken) || 0;
+      const totalBuyUSD = Number(h.volumeBuyUSD) || 0;
+      if (totalBuyTokens > 0) h.avgBuyPriceUSD = String(totalBuyUSD / totalBuyTokens);
+
+      const totalSellTokens = Number(h.volumeSellToken) || 0;
+      const totalSellUSD = Number(h.volumeSellUSD) || 0;
+      if (totalSellTokens > 0) h.avgSellPriceUSD = String(totalSellUSD / totalSellTokens);
+
+      // Recalculate realized PnL (unrealized done in global pass below)
+      const avgBuy = Number(h.avgBuyPriceUSD) || 0;
+      h.realizedPnlUSD = String(totalSellUSD - avgBuy * totalSellTokens);
+
+      h.lastActivityAt = toDate(trade.timestamp);
+      h.lastTradeAt = toDate(trade.timestamp);
+
+      if (trade.labels?.length) h.labels = trade.labels;
+      if (trade.walletMetadata) h.walletMetadata = trade.walletMetadata;
+
+      items[idx] = h;
+
+      // Remove if balance is 0 after a sell
+      if (removeZeroBalance && !isBuy && Number(h.tokenAmount) <= 0) {
+        items.splice(idx, 1);
+        walletIndex.clear();
+        items.forEach((ho, i) => walletIndex.set(ho.walletAddress.toLowerCase(), i));
+        countDelta--;
+        // Re-find pool index after splice
+        poolIdx = items.findIndex((p) => p.labels?.includes('liquidityPool'));
+      }
+    } else if (isBuy) {
+      // New wallet appeared with a buy — only add on buys
+      const newEntry = createNewPosition(trade);
+      walletIndex.set(wallet, items.length);
+      items.push(newEntry);
+      countDelta++;
+    }
+
+    // Update liquidity pool reserves (inverse of the trade)
+    if (poolIdx >= 0 && poolIdx !== idx) {
+      const pool = { ...items[poolIdx] };
+      const poolBal = Number(pool.tokenAmount) || 0;
+      // Buy = tokens leave pool, Sell = tokens enter pool
+      pool.tokenAmount = String(isBuy ? Math.max(0, poolBal - tradeAmt) : poolBal + tradeAmt);
+      items[poolIdx] = pool;
+    }
+  }
+
+  // Global pass: recalculate price-dependent values for ALL positions
+  // using the latest trade price so USD balances and uPnL stay fresh
+  const latestPrice = trades[trades.length - 1]?.tokenPrice;
+  if (latestPrice) {
+    for (let i = 0; i < items.length; i++) {
+      const h = { ...items[i] };
+      const balance = Number(h.tokenAmount) || 0;
+
+      h.tokenAmountUSD = String(balance * latestPrice);
+
+      const avgBuy = Number(h.avgBuyPriceUSD) || 0;
+      h.unrealizedPnlUSD = String((latestPrice - avgBuy) * balance);
+      h.totalPnlUSD = String(Number(h.realizedPnlUSD) + Number(h.unrealizedPnlUSD));
+      h.pnlUSD = h.totalPnlUSD;
+
+      items[i] = h;
+    }
+  }
+
+  return { positions: items, countDelta };
+}
+
+function createNewPosition(trade: StreamTradeEvent): TokenPositionsOutputResponse {
+  return {
+    chainId: trade.blockchain,
+    walletAddress: trade.swapRecipient || trade.sender,
+    tokenAddress: trade.token || '',
+    tokenAmount: String(trade.tokenAmount || 0),
+    tokenAmountRaw: '',
+    tokenAmountUSD: String(trade.tokenAmountUsd || 0),
+    percentageOfTotalSupply: '0',
+    pnlUSD: '0',
+    realizedPnlUSD: '0',
+    unrealizedPnlUSD: '0',
+    totalPnlUSD: '0',
+    buys: 1,
+    sells: 0,
+    volumeBuyToken: String(trade.tokenAmount || 0),
+    volumeSellToken: '0',
+    volumeBuyUSD: String(trade.tokenAmountUsd || 0),
+    volumeSellUSD: '0',
+    avgBuyPriceUSD: String(trade.tokenPrice || 0),
+    avgSellPriceUSD: '0',
+    walletFundAt: null,
+    lastActivityAt: toDate(trade.timestamp),
+    firstTradeAt: toDate(trade.timestamp),
+    lastTradeAt: toDate(trade.timestamp),
+    labels: trade.labels || null,
+    walletMetadata: trade.walletMetadata || null,
+    platform: null,
+    fundingInfo: {
+      from: null, date: null, chainId: null, txHash: null,
+      amount: null, formattedAmount: null, currency: null,
+      fromWalletLogo: null, fromWalletTag: null,
+    },
+  } as TokenPositionsOutputResponse;
+}

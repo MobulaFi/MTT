@@ -42,6 +42,7 @@ export function useWalletPortfolio(walletAddress?: string, blockchain?: string) 
             wallet: walletAddress,
             ...(blockchain ? { blockchains: blockchain } : {}),
             useSwapRecipient: true,
+            includeFees: true,
           }),
           sdk.fetchWalletActivity({
             wallet: walletAddress,

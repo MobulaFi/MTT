@@ -1,8 +1,10 @@
 // hooks/useTopTradersData.ts
 import { useEffect, useCallback, useRef } from 'react';
 import { useTopTradersStore } from '@/store/useTopTraderStore';
-import { sdk } from '@/lib/sdkClient';
+import { sdk, streams } from '@/lib/sdkClient';
 import type { TokenPositionsParams, TokenPositionsResponse } from '@mobula_labs/types';
+import type { StreamTradeEvent } from '@/features/pair/store/usePairHolderStore';
+import { UpdateBatcher } from '@/utils/UpdateBatcher';
 
 interface UseTopTradersDataParams {
   tokenAddress: string;
@@ -29,12 +31,24 @@ export function useTopTradersData({ tokenAddress, blockchain }: UseTopTradersDat
     setFilters,
     setFilter: setStoreFilter,
     clearFilters: clearStoreFilters,
+    upsertFromTrades,
     reset,
   } = useTopTradersStore();
 
   const isFetchingRef = useRef(false);
   const lastFetchParamsRef = useRef<string>('');
+  const subscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
 
+  // Stable callback ref — avoids recreating the batcher
+  const callbackRef = useRef(upsertFromTrades);
+  callbackRef.current = upsertFromTrades;
+
+  const batcherRef = useRef(
+    new UpdateBatcher<StreamTradeEvent>((trades) => {
+      if (trades.length === 0) return;
+      callbackRef.current(trades);
+    }),
+  );
 
   const fetchTopTraders = useCallback(
     async (customFilters?: TopTradersFilters) => {
@@ -44,9 +58,9 @@ export function useTopTradersData({ tokenAddress, blockchain }: UseTopTradersDat
       }
 
       const filtersToUse = customFilters !== undefined ? customFilters : filters;
-      
+
       const fetchKey = JSON.stringify({ tokenAddress, blockchain, filters: filtersToUse });
-      
+
       if (isFetchingRef.current && lastFetchParamsRef.current === fetchKey) {
         return;
       }
@@ -65,6 +79,7 @@ export function useTopTradersData({ tokenAddress, blockchain }: UseTopTradersDat
           address: tokenAddress,
           blockchain: blockchain,
           useSwapRecipient: true,
+          includeFees: true,
         };
 
         if (filtersToUse.label) {
@@ -105,7 +120,7 @@ export function useTopTradersData({ tokenAddress, blockchain }: UseTopTradersDat
   const setFilter = useCallback(
     (key: keyof TopTradersFilters, value: any) => {
       const newFilters = { ...filters, [key]: value };
- 
+
       setStoreFilter(key, value);
 
       fetchTopTraders(newFilters);
@@ -123,10 +138,39 @@ export function useTopTradersData({ tokenAddress, blockchain }: UseTopTradersDat
     if (!tokenAddress || !blockchain) {
       console.warn('[useTopTradersData] Skipping initial fetch - missing params');
       return;
-    }    
-    fetchTopTraders({});
+    }
+
+    const init = async () => {
+      // 1. Subscribe first so we don't miss trades during the REST fetch
+      subscriptionRef.current?.unsubscribe();
+      subscriptionRef.current = streams.subscribeFastTrade(
+        {
+          assetMode: true,
+          items: [{ blockchain, address: tokenAddress }],
+        },
+        (trade: unknown) => {
+          const data = trade as StreamTradeEvent;
+          if (!data || data.event || !data.hash || !data.sender) return;
+          batcherRef.current.add(data);
+        },
+      );
+
+      // 2. Fetch initial data
+      await fetchTopTraders({});
+    };
+
+    init();
+
+    // Periodic resync every 30s to catch transfers and missed trades
+    const pollInterval = setInterval(() => {
+      fetchTopTraders({});
+    }, 30_000);
 
     return () => {
+      clearInterval(pollInterval);
+      subscriptionRef.current?.unsubscribe();
+      subscriptionRef.current = null;
+      batcherRef.current.clear();
       reset();
     };
   }, [tokenAddress, blockchain, reset]);
