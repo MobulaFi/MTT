@@ -47,6 +47,9 @@ interface PairHoldersState {
   tokenPrice: number;
   totalSupply: number;
 
+  // Dedup: track seen trade hashes to prevent double-counting
+  _seenHashes: Set<string>;
+
   // Sorting
   sortField: HolderSortField;
   sortDirection: SortDirection;
@@ -66,6 +69,7 @@ interface PairHoldersState {
   toggleSort: (field: HolderSortField) => void;
   setLabelFilter: (label: string | null) => void;
   upsertFromTrades: (trades: StreamTradeEvent[]) => void;
+  updateLpFromReserves: (reserveToken: number) => void;
   clearHolders: () => void;
 }
 
@@ -76,6 +80,7 @@ export const usePairHoldersStore = create<PairHoldersState>((set, get) => ({
   blockchain: '',
   tokenPrice: 0,
   totalSupply: 0,
+  _seenHashes: new Set<string>(),
   sortField: 'balance',
   sortDirection: 'desc',
   labelFilter: null,
@@ -104,44 +109,52 @@ export const usePairHoldersStore = create<PairHoldersState>((set, get) => ({
     const state = get();
     if (state.holders.length === 0) return;
 
-    console.log('[holders-store] upsertFromTrades called with', trades.length, 'trades');
-    for (const t of trades) {
-      const wallet = (t.swapRecipient || t.sender)?.toLowerCase();
-      const existing = state.holders.find(h => h.walletAddress.toLowerCase() === wallet);
-      console.log('[holders-store] trade detail:', {
-        wallet,
-        type: t.type,
-        tradeTokenAmount: t.tokenAmount,
-        tradeTokenAmountUsd: t.tokenAmountUsd,
-        tradeTokenPrice: t.tokenPrice,
-        existingBalance: existing ? existing.tokenAmount : 'NOT_FOUND',
-        existingBalanceUSD: existing ? existing.tokenAmountUSD : 'NOT_FOUND',
-      });
-    }
+    // Deduplicate by hash to avoid double-counting
+    const unique = trades.filter((t) => {
+      if (!t.hash) return true;
+      if (state._seenHashes.has(t.hash)) return false;
+      state._seenHashes.add(t.hash);
+      // Cap set size to prevent memory leak
+      if (state._seenHashes.size > 2000) {
+        const iter = state._seenHashes.values();
+        for (let i = 0; i < 500; i++) iter.next();
+        // Recreate without oldest entries
+        const keep = new Set<string>();
+        for (const v of state._seenHashes) keep.add(v);
+        // Just delete first 500
+        let del = 0;
+        for (const v of state._seenHashes) {
+          if (del++ < 500) state._seenHashes.delete(v);
+          else break;
+        }
+      }
+      return true;
+    });
+
+    if (unique.length === 0) return;
 
     const { positions, countDelta } = applyTradesToPositions(
       state.holders,
-      trades,
+      unique,
       { removeZeroBalance: true },
     );
-
-    // Log the result for affected wallets
-    for (const t of trades) {
-      const wallet = (t.swapRecipient || t.sender)?.toLowerCase();
-      const updated = positions.find(h => h.walletAddress.toLowerCase() === wallet);
-      if (updated) {
-        console.log('[holders-store] after apply:', {
-          wallet,
-          newBalance: updated.tokenAmount,
-          newBalanceUSD: updated.tokenAmountUSD,
-        });
-      }
-    }
 
     set({
       holders: positions,
       holdersCount: state.holdersCount + countDelta,
     });
+  },
+
+  updateLpFromReserves: (reserveToken: number) => {
+    const state = get();
+    const idx = state.holders.findIndex((h) => h.labels?.includes('liquidityPool'));
+    if (idx < 0 || reserveToken <= 0) return;
+    const lp = state.holders[idx];
+    // Skip if unchanged (avoid unnecessary re-renders)
+    if (Math.abs(Number(lp.tokenAmount) - reserveToken) < 1) return;
+    const updated = [...state.holders];
+    updated[idx] = { ...lp, tokenAmount: String(reserveToken) };
+    set({ holders: updated });
   },
 
   clearHolders: () =>
@@ -152,6 +165,7 @@ export const usePairHoldersStore = create<PairHoldersState>((set, get) => ({
       blockchain: '',
       tokenPrice: 0,
       totalSupply: 0,
+      _seenHashes: new Set<string>(),
       sortField: 'balance',
       sortDirection: 'desc',
       labelFilter: null,

@@ -69,19 +69,33 @@ export async function POST(request: Request) {
           if (isClientDisconnected) return;
 
           try {
-            // Log 1 in 10 trades to Datadog for debugging post-balance availability
-            if (streamType === 'fast-trade' && Math.random() < 0.1) {
+            // Log ALL stream-svm/evm trades for debugging (sent to Datadog via log drain)
+            if (streamType.startsWith('stream-')) {
               const d = data as Record<string, unknown>;
-              console.log('[stream-debug]', JSON.stringify({
-                hash: d.hash,
-                type: d.type,
-                sender: d.sender,
-                swapRecipient: d.swapRecipient,
-                tokenAmount: d.tokenAmount,
-                tokenAmountRaw: d.tokenAmountRaw,
-                postBalanceBaseToken: d.postBalanceBaseToken,
-                preBalanceBaseToken: d.preBalanceBaseToken,
-                balanceKeys: Object.keys(d).filter(k => k.toLowerCase().includes('balance')),
+              const inner = (d.data ?? d) as Record<string, unknown>;
+              const baseToken = inner.baseToken as string;
+              const addr0 = inner.addressToken0 as string;
+              const isT0Base = baseToken && addr0 && baseToken === addr0;
+              const postBal = isT0Base ? inner.rawPostBalance0 : inner.rawPostBalance1;
+              const postBalR = isT0Base ? inner.rawPostBalanceRecipient0 : inner.rawPostBalanceRecipient1;
+              const rawAmt = Number(inner.tokenAmountRaw);
+              const humanAmt = Number(inner.tokenAmount);
+              const factor = rawAmt && humanAmt ? rawAmt / humanAmt : null;
+              const humanBal = postBal && factor ? Number(postBal) / factor : null;
+              const humanBalR = postBalR && factor ? Number(postBalR) / factor : null;
+              console.log('[stream-trade]', JSON.stringify({
+                type: inner.type,
+                sender: (inner.sender as string)?.slice(0, 8),
+                recipient: (inner.swapRecipient as string)?.slice(0, 8),
+                tokenAmount: inner.tokenAmount,
+                tokenAmountRaw: inner.tokenAmountRaw,
+                isT0Base,
+                postBal,
+                postBalR,
+                factor,
+                humanBal,
+                humanBalR,
+                hash: (inner.hash as string)?.slice(0, 12),
               }));
             }
             const sseMessage = `data: ${JSON.stringify(data)}\n\n`;

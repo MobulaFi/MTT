@@ -13,7 +13,7 @@ function getStreamConfig(blockchain: string): {
   chainId: string;
 } | null {
   const name = blockchain.toLowerCase();
-  if (name === 'solana') return { streamType: 'stream-svm', chainId: 'solana:mainnet' };
+  if (name === 'solana') return { streamType: 'stream-svm', chainId: 'solana:solana' };
   if (name === 'ethereum') return { streamType: 'stream-evm', chainId: 'evm:1' };
   if (name.includes('bnb') || name.includes('bsc') || name.includes('bep20'))
     return { streamType: 'stream-evm', chainId: 'evm:56' };

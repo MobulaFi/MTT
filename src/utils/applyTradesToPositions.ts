@@ -144,14 +144,10 @@ export function applyTradesToPositions(
       countDelta++;
     }
 
-    // Update liquidity pool reserves (inverse of the trade)
-    if (poolIdx >= 0 && poolIdx !== idx) {
-      const pool = { ...items[poolIdx] };
-      const poolBal = Number(pool.tokenAmount) || 0;
-      // Buy = tokens leave pool, Sell = tokens enter pool
-      pool.tokenAmount = String(isBuy ? Math.max(0, poolBal - tradeAmt) : poolBal + tradeAmt);
-      items[poolIdx] = pool;
-    }
+    // NOTE: LP balance is NOT updated from stream trades to avoid double-counting.
+    // The periodic REST resync (every 30s) provides the authoritative LP balance.
+    // Updating LP incrementally here caused drift > 100% because trades arriving
+    // around resync time were counted both in REST data and stream processing.
   }
 
   // Global pass: recalculate price-dependent values for ALL positions
