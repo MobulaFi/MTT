@@ -376,7 +376,7 @@ export const sdk = {
 // Streams Wrapper - Auto-route WebSocket based on mode
 // ============================================================================
 
-type StreamType = 'fast-trade' | 'pulse-v2' | 'token-details' | 'market-details' | 'ohlcv' | 'position';
+type StreamType = 'fast-trade' | 'pulse-v2' | 'token-details' | 'market-details' | 'ohlcv' | 'position' | 'stream-svm' | 'stream-evm';
 
 interface StreamSubscription {
   unsubscribe: () => void;

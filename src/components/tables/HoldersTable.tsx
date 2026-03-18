@@ -480,7 +480,7 @@ export function HoldersTable({ totalSupply }: HoldersTableProps) {
                     <td className="text-left px-2">
                       <div className="flex flex-col">
                         <span className="text-white font-medium">
-                          {formatPureNumber(tokenAmount)}
+                          {formatPureNumber(tokenAmount)}{(Number(holder.tokenAmountUSD) || balanceUSD) ? <span className="text-[10px] text-grayGhost font-normal"> (${formatPureNumber(Number(holder.tokenAmountUSD) || balanceUSD)})</span> : null}
                         </span>
                         <span className="text-[10px] text-grayGhost">
                           {holder.lastActivityAt ? (

@@ -16,6 +16,45 @@ function toDate(ts: number): Date {
   return new Date(ts > 1e12 ? ts : ts * 1000);
 }
 
+/**
+ * Convert a raw balance (bigint string) to human-readable number.
+ * Uses tokenAmountRaw / tokenAmount ratio to derive the decimals factor.
+ */
+function rawToHuman(rawValue: string | null | undefined, trade: StreamTradeEvent): number | null {
+  if (!rawValue) return null;
+
+  const postBig = Number(rawValue);
+  if (!Number.isFinite(postBig)) return null;
+
+  // Derive decimals factor from raw vs human token amount
+  const rawAmt = Number(trade.tokenAmountRaw);
+  const humanAmt = trade.tokenAmount;
+  if (rawAmt && humanAmt && humanAmt > 0) {
+    const factor = rawAmt / humanAmt;
+    if (factor >= 1) return postBig / factor;
+  }
+
+  // Fallback: if we can't derive decimals, return null (use incremental)
+  return null;
+}
+
+/**
+ * Get the authoritative post-balance for the wallet being updated.
+ * - If wallet === sender: use postBalanceBaseToken (sender's balance)
+ * - If wallet === swapRecipient (and !== sender): use postBalanceRecipientBaseToken
+ */
+function getPostBalanceForWallet(trade: StreamTradeEvent, wallet: string): number | null {
+  const sender = trade.sender?.toLowerCase();
+  const recipient = trade.swapRecipient?.toLowerCase();
+
+  if (recipient && recipient !== sender && wallet === recipient) {
+    // Wallet is the swap recipient (different from sender) — use recipient post-balance
+    return rawToHuman(trade.postBalanceRecipientBaseToken, trade);
+  }
+  // Wallet is the sender (or sender === recipient) — use sender post-balance
+  return rawToHuman(trade.postBalanceBaseToken, trade);
+}
+
 export function applyTradesToPositions(
   positions: TokenPositionsOutputResponse[],
   trades: StreamTradeEvent[],
@@ -45,10 +84,16 @@ export function applyTradesToPositions(
       const prevBalance = Number(h.tokenAmount) || 0;
       const tradeUsd = trade.tokenAmountUsd || 0;
 
-      // Update balance
-      h.tokenAmount = String(
-        isBuy ? prevBalance + tradeAmt : Math.max(0, prevBalance - tradeAmt),
-      );
+      // Use post-balance from stream when available (authoritative, no drift)
+      const postBalanceHuman = getPostBalanceForWallet(trade, wallet);
+      if (postBalanceHuman !== null) {
+        h.tokenAmount = String(postBalanceHuman);
+      } else {
+        // Fallback: incremental calculation
+        h.tokenAmount = String(
+          isBuy ? prevBalance + tradeAmt : Math.max(0, prevBalance - tradeAmt),
+        );
+      }
 
       // Update counters & volumes
       if (isBuy) {
@@ -132,11 +177,14 @@ export function applyTradesToPositions(
 }
 
 function createNewPosition(trade: StreamTradeEvent): TokenPositionsOutputResponse {
+  const wallet = (trade.swapRecipient || trade.sender)?.toLowerCase() || '';
+  const postBal = getPostBalanceForWallet(trade, wallet);
+  const balance = postBal !== null ? postBal : (trade.tokenAmount || 0);
   return {
     chainId: trade.blockchain,
     walletAddress: trade.swapRecipient || trade.sender,
     tokenAddress: trade.token || '',
-    tokenAmount: String(trade.tokenAmount || 0),
+    tokenAmount: String(balance),
     tokenAmountRaw: '',
     tokenAmountUSD: String(trade.tokenAmountUsd || 0),
     percentageOfTotalSupply: '0',

@@ -5,7 +5,7 @@ import { MobulaClient } from '@mobula_labs/sdk';
 const apiKey = process.env.MOBULA_SERVER_SIDE_KEY;
 
 // Supported stream types
-type StreamType = 'fast-trade' | 'pulse-v2' | 'token-details' | 'market-details' | 'ohlcv' | 'position';
+type StreamType = 'fast-trade' | 'pulse-v2' | 'token-details' | 'market-details' | 'ohlcv' | 'position' | 'stream-svm' | 'stream-evm';
 
 export async function POST(request: Request) {
   if (!apiKey) {
@@ -67,8 +67,23 @@ export async function POST(request: Request) {
         payload,
         (data: unknown) => {
           if (isClientDisconnected) return;
-          
+
           try {
+            // Log 1 in 10 trades to Datadog for debugging post-balance availability
+            if (streamType === 'fast-trade' && Math.random() < 0.1) {
+              const d = data as Record<string, unknown>;
+              console.log('[stream-debug]', JSON.stringify({
+                hash: d.hash,
+                type: d.type,
+                sender: d.sender,
+                swapRecipient: d.swapRecipient,
+                tokenAmount: d.tokenAmount,
+                tokenAmountRaw: d.tokenAmountRaw,
+                postBalanceBaseToken: d.postBalanceBaseToken,
+                preBalanceBaseToken: d.preBalanceBaseToken,
+                balanceKeys: Object.keys(d).filter(k => k.toLowerCase().includes('balance')),
+              }));
+            }
             const sseMessage = `data: ${JSON.stringify(data)}\n\n`;
             controller.enqueue(encoder.encode(sseMessage));
           } catch (error) {

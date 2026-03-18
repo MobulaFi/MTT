@@ -30,6 +30,13 @@ export interface StreamTradeEvent {
   walletMetadata?: TokenPositionsOutputResponse['walletMetadata'];
   token?: string;
   event?: string;
+  // Post-balance fields from the stream (raw bigint strings)
+  // postBalanceBaseToken = sender's post-balance
+  // postBalanceRecipientBaseToken = swap recipient's post-balance (when recipient != sender)
+  postBalanceBaseToken?: string | null;
+  preBalanceBaseToken?: string | null;
+  postBalanceRecipientBaseToken?: string | null;
+  tokenAmountRaw?: string;
 }
 
 interface PairHoldersState {
@@ -97,11 +104,39 @@ export const usePairHoldersStore = create<PairHoldersState>((set, get) => ({
     const state = get();
     if (state.holders.length === 0) return;
 
+    console.log('[holders-store] upsertFromTrades called with', trades.length, 'trades');
+    for (const t of trades) {
+      const wallet = (t.swapRecipient || t.sender)?.toLowerCase();
+      const existing = state.holders.find(h => h.walletAddress.toLowerCase() === wallet);
+      console.log('[holders-store] trade detail:', {
+        wallet,
+        type: t.type,
+        tradeTokenAmount: t.tokenAmount,
+        tradeTokenAmountUsd: t.tokenAmountUsd,
+        tradeTokenPrice: t.tokenPrice,
+        existingBalance: existing ? existing.tokenAmount : 'NOT_FOUND',
+        existingBalanceUSD: existing ? existing.tokenAmountUSD : 'NOT_FOUND',
+      });
+    }
+
     const { positions, countDelta } = applyTradesToPositions(
       state.holders,
       trades,
       { removeZeroBalance: true },
     );
+
+    // Log the result for affected wallets
+    for (const t of trades) {
+      const wallet = (t.swapRecipient || t.sender)?.toLowerCase();
+      const updated = positions.find(h => h.walletAddress.toLowerCase() === wallet);
+      if (updated) {
+        console.log('[holders-store] after apply:', {
+          wallet,
+          newBalance: updated.tokenAmount,
+          newBalanceUSD: updated.tokenAmountUSD,
+        });
+      }
+    }
 
     set({
       holders: positions,
