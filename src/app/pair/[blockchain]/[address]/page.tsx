@@ -16,7 +16,7 @@ export const fetchCache = 'force-no-store';
 
 export async function generateMetadata({ params }: PairPageProps) {
   const cookieStore = await cookies();
-  
+
   const customRestUrl = cookieStore.get('customRestUrl')?.value;
   const client = getMobulaClient(customRestUrl, true);
 
@@ -24,13 +24,17 @@ export async function generateMetadata({ params }: PairPageProps) {
   const address = awaitedParams.address;
   const blockchain = decodeURIComponent(awaitedParams.blockchain);
 
-  const response: MarketDetailsResponse = await client.fetchMarketDetails({
-    address,
-    blockchain,
-    stats: true,
-  });
-
-  const initialData = response.data;
+  let initialData: MarketDetailsResponse['data'] | null = null;
+  try {
+    const response: MarketDetailsResponse = await client.fetchMarketDetails({
+      address,
+      blockchain,
+      stats: true,
+    });
+    initialData = response.data ?? null;
+  } catch {
+    // API error (404, timeout, etc.) — fall through to fallback metadata
+  }
 
   if (!initialData) {
     return {
@@ -92,8 +96,13 @@ export default async function PairPage({ params }: PairPageProps) {
 
   const client = getMobulaClient(customRestUrl, true);
 
-  const marketRes = await client.fetchMarketDetails({ address, blockchain, stats: true });
-  const marketData = marketRes.data;
+  let marketData: MarketDetailsResponse['data'] | null = null;
+  try {
+    const marketRes = await client.fetchMarketDetails({ address, blockchain, stats: true });
+    marketData = marketRes.data ?? null;
+  } catch {
+    // API error — render fallback
+  }
 
   if (!marketData) {
     return (
