@@ -13,6 +13,7 @@ export function usePairData(
 ) {
   const { setData, setLoading, setError, reset, setTotalSupply } = usePairStore();
   const updateLpFromReserves = usePairHoldersStore((s) => s.updateLpFromReserves);
+  const setTokenPrice = usePairHoldersStore((s) => s.setTokenPrice);
 
   // Create batcher for pair updates (batched via rAF for 60fps)
   const pairBatcherRef = useRef<UpdateBatcher<WssMarketDetailsResponseType['pairData']>>(
@@ -23,6 +24,10 @@ export function usePairData(
         if (latestUpdate) {
           setData(latestUpdate);
           setTotalSupply(latestUpdate.base?.totalSupply ?? null);
+          // Sync live price to holders store for real-time USD recalculation
+          if (latestUpdate.base?.priceUSD) {
+            setTokenPrice(latestUpdate.base.priceUSD);
+          }
           // Sync LP balance from pair reserves (authoritative, real-time)
           const reserve = latestUpdate.base?.approximateReserveToken;
           if (reserve && reserve > 0) {
