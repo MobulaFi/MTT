@@ -69,6 +69,8 @@ interface PairHoldersState {
   toggleSort: (field: HolderSortField) => void;
   setLabelFilter: (label: string | null) => void;
   upsertFromTrades: (trades: StreamTradeEvent[]) => void;
+  upsertHolder: (holder: TokenPositionsOutputResponse) => void;
+  removeHolder: (walletAddress: string) => void;
   updateLpFromReserves: (reserveToken: number) => void;
   clearHolders: () => void;
 }
@@ -143,6 +145,30 @@ export const usePairHoldersStore = create<PairHoldersState>((set, get) => ({
       holders: positions,
       holdersCount: state.holdersCount + countDelta,
     });
+  },
+
+  upsertHolder: (holder) => {
+    const state = get();
+    const idx = state.holders.findIndex(
+      (h) => h.walletAddress.toLowerCase() === holder.walletAddress.toLowerCase(),
+    );
+    const updated = [...state.holders];
+    if (idx >= 0) {
+      updated[idx] = holder;
+    } else {
+      updated.push(holder);
+    }
+    set({ holders: updated });
+  },
+
+  removeHolder: (walletAddress) => {
+    const state = get();
+    const filtered = state.holders.filter(
+      (h) => h.walletAddress.toLowerCase() !== walletAddress.toLowerCase(),
+    );
+    if (filtered.length !== state.holders.length) {
+      set({ holders: filtered, holdersCount: Math.max(0, filtered.length) });
+    }
   },
 
   updateLpFromReserves: (reserveToken: number) => {

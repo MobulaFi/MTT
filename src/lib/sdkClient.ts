@@ -149,6 +149,13 @@ function loadClientSettings(): void {
 export function getClientSdk(): MobulaClient {
   if (!clientSdkClient) {
     loadClientSettings();
+
+    // Allow overriding holders WS URL for local dev
+    const holdersWsOverride = process.env.NEXT_PUBLIC_HOLDERS_WS_URL;
+    if (holdersWsOverride) {
+      currentClientWssUrlMap.holders = holdersWsOverride;
+    }
+
     const wsUrlMapToUse = Object.keys(currentClientWssUrlMap).length > 0 ? currentClientWssUrlMap : undefined;
 
     clientSdkClient = new MobulaClient({
@@ -376,7 +383,7 @@ export const sdk = {
 // Streams Wrapper - Auto-route WebSocket based on mode
 // ============================================================================
 
-type StreamType = 'fast-trade' | 'pulse-v2' | 'token-details' | 'market-details' | 'ohlcv' | 'position' | 'stream-svm' | 'stream-evm';
+type StreamType = 'fast-trade' | 'pulse-v2' | 'token-details' | 'market-details' | 'ohlcv' | 'position' | 'stream-svm' | 'stream-evm' | 'holders';
 
 interface StreamSubscription {
   unsubscribe: () => void;
@@ -532,6 +539,16 @@ export const streams = {
     callback: (data: unknown) => void
   ): StreamSubscription => {
     return subscribeToStream('position', params, callback);
+  },
+
+  /**
+   * Subscribe to holders stream (init + per-holder updates + periodic sync)
+   */
+  subscribeHolders: (
+    params: { tokens: { address: string; blockchain: string }[] },
+    callback: (data: unknown) => void,
+  ): StreamSubscription => {
+    return subscribeToStream('holders', params, callback);
   },
 
   /**

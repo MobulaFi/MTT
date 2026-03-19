@@ -5,7 +5,7 @@ import { MobulaClient } from '@mobula_labs/sdk';
 const apiKey = process.env.MOBULA_SERVER_SIDE_KEY;
 
 // Supported stream types
-type StreamType = 'fast-trade' | 'pulse-v2' | 'token-details' | 'market-details' | 'ohlcv' | 'position' | 'stream-svm' | 'stream-evm';
+type StreamType = 'fast-trade' | 'pulse-v2' | 'token-details' | 'market-details' | 'ohlcv' | 'position' | 'stream-svm' | 'stream-evm' | 'holders';
 
 export async function POST(request: Request) {
   if (!apiKey) {
@@ -46,12 +46,23 @@ export async function POST(request: Request) {
     }
   }
 
+  // Allow overriding WS URL for local development (e.g. MOBULA_WS_URL=ws://localhost:4058)
+  const wsOverride = process.env.MOBULA_WS_URL;
+  const wsUrlMap = wsOverride
+    ? Object.fromEntries(
+        (['holders', 'fast-trade', 'pulse-v2', 'token-details', 'market-details', 'ohlcv', 'position', 'stream-svm', 'stream-evm'] as const).map(
+          (t) => [t, wsOverride],
+        ),
+      )
+    : undefined;
+
   // Create a new client for this stream
   const client = new MobulaClient({
     restUrl,
     apiKey,
     debug: false,
     timeout: 200000,
+    wsUrlMap,
   });
 
   // Create a readable stream for SSE

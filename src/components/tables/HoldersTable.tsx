@@ -343,10 +343,13 @@ export function HoldersTable({ totalSupply }: HoldersTableProps) {
                   ? (tokenAmount / totalSupply) * 100
                   : 0;
                 const balanceUSD = tokenAmount * tokenPrice;
-                const totalPnlValue = Number(holder.totalPnlUSD) || Number(holder.pnlUSD) || 0;
-                const realizedPnlValue = Number(holder.realizedPnlUSD) || 0;
-                const unrealizedPnlValue = Number(holder.unrealizedPnlUSD) || 0;
                 const avgBuyPrice = Number(holder.avgBuyPriceUSD) || 0;
+                const realizedPnlValue = Number(holder.realizedPnlUSD) || 0;
+                // Recalculate unrealized PnL from current price for real-time accuracy
+                const unrealizedPnlValue = avgBuyPrice > 0
+                  ? balanceUSD - (avgBuyPrice * tokenAmount)
+                  : (Number(holder.unrealizedPnlUSD) || 0);
+                const totalPnlValue = realizedPnlValue + unrealizedPnlValue;
                 const avgSellPrice = Number(holder.avgSellPriceUSD) || 0;
 
                 return (

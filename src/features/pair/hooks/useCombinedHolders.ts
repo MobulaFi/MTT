@@ -1,207 +1,161 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { sdk, streams } from '@/lib/sdkClient';
+import { useEffect } from 'react';
+import { getClientSdk } from '@/lib/sdkClient';
 import { usePairHoldersStore } from '@/features/pair/store/usePairHolderStore';
-import type { StreamTradeEvent } from '@/features/pair/store/usePairHolderStore';
-import type { TokenPositionsResponse } from '@mobula_labs/types';
-import { UpdateBatcher } from '@/utils/UpdateBatcher';
+import type { TokenPositionsOutputResponse } from '@mobula_labs/types';
 
-/** Map blockchain name → multi-event stream config */
-function getStreamConfig(blockchain: string): {
-  streamType: 'stream-svm' | 'stream-evm';
-  chainId: string;
-} | null {
-  const name = blockchain.toLowerCase();
-  if (name === 'solana') return { streamType: 'stream-svm', chainId: 'solana:solana' };
-  if (name === 'ethereum') return { streamType: 'stream-evm', chainId: 'evm:1' };
-  if (name.includes('bnb') || name.includes('bsc') || name.includes('bep20'))
-    return { streamType: 'stream-evm', chainId: 'evm:56' };
-  if (name === 'base') return { streamType: 'stream-evm', chainId: 'evm:8453' };
-  if (name === 'arbitrum') return { streamType: 'stream-evm', chainId: 'evm:42161' };
-  if (name === 'polygon') return { streamType: 'stream-evm', chainId: 'evm:137' };
-  if (name === 'avalanche') return { streamType: 'stream-evm', chainId: 'evm:43114' };
-  return null;
-}
-
-/** Map a swap-enriched event from the multi-event stream to StreamTradeEvent */
-function mapSwapToTradeEvent(raw: Record<string, unknown>): StreamTradeEvent | null {
-  const type = raw.type as string;
-  if (type !== 'buy' && type !== 'sell') return null;
-
-  const sender = (raw.sender as string) || (raw.transactionSenderAddress as string);
-  if (!sender) return null;
-
-  const hash = (raw.hash as string) || (raw.transactionHash as string);
-  if (!hash) return null;
-
-  // Determine which token is base to pick the right post-balance fields
-  const baseToken = raw.baseToken as string | undefined;
-  const addressToken0 = raw.addressToken0 as string | undefined;
-  const isToken0Base = baseToken && addressToken0 && baseToken === addressToken0;
-
-  const postBalanceBaseToken = isToken0Base
-    ? (raw.rawPostBalance0 as string) ?? null
-    : (raw.rawPostBalance1 as string) ?? null;
-  const postBalanceRecipientBaseToken = isToken0Base
-    ? (raw.rawPostBalanceRecipient0 as string) ?? null
-    : (raw.rawPostBalanceRecipient1 as string) ?? null;
-
-  return {
-    sender,
-    swapRecipient: (raw.swapRecipient as string) ?? null,
-    type,
-    tokenAmount: Number(raw.tokenAmount) || 0,
-    tokenAmountUsd: Number(raw.tokenAmountUSD) || 0,
-    tokenPrice: Number(raw.tokenPrice) || 0,
-    timestamp: raw.date ? new Date(raw.date as string | number).getTime() : Date.now(),
-    blockchain: (raw.blockchain as string) || '',
-    hash,
-    labels: raw.labels as string[] | undefined,
-    postBalanceBaseToken,
-    postBalanceRecipientBaseToken,
-    tokenAmountRaw: raw.tokenAmountRaw?.toString(),
-  };
-}
-
-export const useCombinedHolders = (tokenAddress: string, blockchain: string) => {
+/**
+ * Subscribe to the holders WebSocket stream for a given token.
+ *
+ * 1. Immediately fetches holders via HTTP for fast first paint
+ * 2. Subscribes to the WS stream for real-time updates
+ * 3. Stream sends init (snapshot), update (per-holder delta), sync (DB resync every 30s)
+ */
+export const useCombinedHolders = (
+  tokenAddress: string,
+  blockchain: string,
+  tokenPrice?: number,
+  totalSupply?: number,
+) => {
   const {
     setHolders,
     setHoldersCount,
     setBlockchain,
     clearHolders,
     setLoading,
-    upsertFromTrades,
+    setTokenPrice,
+    setTotalSupply,
+    upsertHolder,
+    removeHolder,
   } = usePairHoldersStore();
-
-  // Stable callback ref — avoids recreating the batcher when upsertFromTrades changes
-  const callbackRef = useRef(upsertFromTrades);
-  callbackRef.current = upsertFromTrades;
-
-  const batcherRef = useRef(
-    new UpdateBatcher<StreamTradeEvent>((trades) => {
-      if (trades.length === 0) return;
-      callbackRef.current(trades);
-    }),
-  );
 
   useEffect(() => {
     if (!tokenAddress || !blockchain) return;
 
     clearHolders();
     setBlockchain(blockchain);
+    if (tokenPrice) setTokenPrice(tokenPrice);
+    if (totalSupply) setTotalSupply(totalSupply);
     setLoading(true);
 
-    let subscription: { unsubscribe: () => void } | null = null;
     let cancelled = false;
+    let subId: string | null = null;
+    let httpLoaded = false;
 
-    const init = async () => {
-      // 1. Subscribe first so we don't miss trades during the REST fetch
-      const config = getStreamConfig(blockchain);
-
-      if (config) {
-        // Use multi-event stream — has both sender and recipient post-balances
-        subscription = streams.subscribe(
-          config.streamType,
-          {
-            chainIds: [config.chainId],
-            events: ['swap-enriched'],
-            filters: {
-              or: [
-                { eq: { addressToken0: tokenAddress } },
-                { eq: { addressToken1: tokenAddress } },
-              ],
-            },
-          },
-          (event: unknown) => {
-            // Multi-event stream wraps data in { data, chainId, subscriptionId }
-            const envelope = event as Record<string, unknown>;
-            const swapData = (envelope.data ?? envelope) as Record<string, unknown>;
-            if (!swapData || swapData.event) return;
-
-            const trade = mapSwapToTradeEvent(swapData);
-            if (!trade) return;
-
-            console.log('[holders-stream] swap-enriched:', {
-              hash: trade.hash,
-              type: trade.type,
-              sender: trade.sender,
-              swapRecipient: trade.swapRecipient,
-              tokenAmount: trade.tokenAmount,
-              postBalanceBaseToken: trade.postBalanceBaseToken,
-              postBalanceRecipientBaseToken: trade.postBalanceRecipientBaseToken,
-            });
-            batcherRef.current.add(trade);
-          },
-        );
-      } else {
-        // Fallback: fast-trade for unsupported chains
-        subscription = streams.subscribeFastTrade(
-          {
-            assetMode: true,
-            items: [{ blockchain, address: tokenAddress }],
-          },
-          (trade: unknown) => {
-            const data = trade as StreamTradeEvent;
-            if (!data || data.event || !data.hash || !data.sender) return;
-            batcherRef.current.add(data);
-          },
-        );
-      }
-
-      // 2. Fetch initial data via REST
-      try {
-        const response = await sdk.fetchTokenHolderPositions({
-          blockchain,
-          address: tokenAddress,
-          limit: 100,
-          useSwapRecipient: true,
-          includeFees: true,
-        }) as TokenPositionsResponse;
-
-        if (!cancelled && response?.data) {
-          setHoldersCount(response.totalCount || response.data.length);
-          setHolders(response.data);
+    // 1. Fast HTTP fetch for immediate display
+    fetch(
+      `https://api.mobula.io/api/2/token/holder-positions?address=${encodeURIComponent(tokenAddress)}&blockchain=${encodeURIComponent(blockchain)}&limit=100`,
+      {
+        headers: {
+          Authorization: getClientSdk().apiKey || '',
+        },
+      },
+    )
+      .then((res) => res.json())
+      .then((json: { data?: TokenPositionsOutputResponse[]; totalCount?: number }) => {
+        if (cancelled) return;
+        const holders = json.data || [];
+        if (holders.length > 0) {
+          httpLoaded = true;
+          setHoldersCount(json.totalCount ?? holders.length);
+          setHolders(holders);
+          setLoading(false);
         }
-      } catch (error) {
-        console.error('Failed to fetch holders:', error);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
+      })
+      .catch(() => {
+        // HTTP failed — stream will provide data
+      });
 
-    init();
+    // 2. WS stream for real-time updates (will also send init snapshot)
+    const client = getClientSdk();
 
-    // Periodic resync every 30s to catch transfers and missed trades
-    const pollInterval = setInterval(async () => {
-      if (cancelled) return;
-      try {
-        const response = await sdk.fetchTokenHolderPositions({
-          blockchain,
-          address: tokenAddress,
-          limit: 100,
-          useSwapRecipient: true,
-          includeFees: true,
-        }) as TokenPositionsResponse;
+    subId = client.streams.subscribe(
+      'holders',
+      { tokens: [{ address: tokenAddress, blockchain }] },
+      (msg: unknown) => {
+        if (cancelled) return;
 
-        if (!cancelled && response?.data) {
-          setHoldersCount(response.totalCount || response.data.length);
-          setHolders(response.data);
+        const message = msg as {
+          type?: string;
+          event?: string;
+          data?: {
+            tokenKey?: string;
+            holders?: TokenPositionsOutputResponse[];
+          } & TokenPositionsOutputResponse;
+          subscriptionId?: string;
+        };
+
+        const type = message.type || message.event;
+
+        switch (type) {
+          case 'init': {
+            const holders = message.data?.holders || [];
+            // If HTTP already loaded, only use init if it has more/fresher data
+            if (!httpLoaded || holders.length > 0) {
+              setHoldersCount(holders.length);
+              setHolders(holders);
+            }
+            setLoading(false);
+            break;
+          }
+
+          case 'update': {
+            const data = message.data;
+            if (!data?.walletAddress) break;
+
+            const balance = Number(data.tokenAmount) || 0;
+            if (balance <= 0) {
+              removeHolder(data.walletAddress);
+            } else {
+              upsertHolder(data as TokenPositionsOutputResponse);
+            }
+            break;
+          }
+
+          case 'sync': {
+            const holders = message.data?.holders || [];
+            setHoldersCount(holders.length);
+            setHolders(holders);
+            break;
+          }
+
+          case 'subscribed':
+          case 'error':
+            if (type === 'error') setLoading(false);
+            break;
+
+          default:
+            break;
         }
-      } catch {
-        // Silent fail — stream is still live
-      }
-    }, 30_000);
+      },
+    );
 
     return () => {
       cancelled = true;
-      clearInterval(pollInterval);
-      subscription?.unsubscribe();
-      batcherRef.current.clear();
+      if (subId) {
+        client.streams.unsubscribe('holders', subId);
+      }
       clearHolders();
       setLoading(false);
     };
-  }, [tokenAddress, blockchain, setHolders, setHoldersCount, setBlockchain, clearHolders, setLoading]);
+    // Only re-subscribe when token/blockchain change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tokenAddress, blockchain]);
+
+  // Keep tokenPrice in sync with market data for real-time USD recalculation
+  useEffect(() => {
+    if (tokenPrice && tokenPrice > 0) {
+      setTokenPrice(tokenPrice);
+    }
+  }, [tokenPrice, setTokenPrice]);
+
+  // Keep totalSupply in sync
+  useEffect(() => {
+    if (totalSupply && totalSupply > 0) {
+      setTotalSupply(totalSupply);
+    }
+  }, [totalSupply, setTotalSupply]);
 
   return usePairHoldersStore();
 };
