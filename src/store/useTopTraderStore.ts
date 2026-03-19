@@ -1,9 +1,7 @@
 // store/topTradersStore.ts
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import type { TokenPositionsResponse } from '@mobula_labs/types';
-import type { StreamTradeEvent } from '@/features/pair/store/usePairHolderStore';
-import { applyTradesToPositions } from '@/utils/applyTradesToPositions';
+import type { TokenPositionsOutputResponse } from '@mobula_labs/types';
 
 interface TopTradersFilters {
   label?: string;
@@ -11,8 +9,13 @@ interface TopTradersFilters {
   walletAddresses?: string[];
 }
 
+interface TopTradersData {
+  data: TokenPositionsOutputResponse[];
+  totalCount: number;
+}
+
 interface TopTradersState {
-  data: TokenPositionsResponse;
+  data: TopTradersData;
 
   tokenAddress: string | null;
   blockchain: string | null;
@@ -22,20 +25,21 @@ interface TopTradersState {
   isLoading: boolean;
   error: string | null;
 
-  setData: (data: TokenPositionsResponse) => void;
+  setData: (data: TopTradersData) => void;
   setLoading: (isLoading: boolean) => void;
   setError: (error: string | null) => void;
   setTokenAddress: (tokenAddress: string) => void;
   setBlockchain: (blockchain: string) => void;
   setFilters: (filters: TopTradersFilters) => void;
-  setFilter: (key: keyof TopTradersFilters, value: any) => void;
+  setFilter: (key: keyof TopTradersFilters, value: unknown) => void;
   clearFilters: () => void;
-  upsertFromTrades: (trades: StreamTradeEvent[]) => void;
+  upsertHolder: (holder: TokenPositionsOutputResponse) => void;
+  removeHolder: (walletAddress: string) => void;
   reset: () => void;
 }
 
 const initialState: Pick<TopTradersState, 'data' | 'tokenAddress' | 'blockchain' | 'filters' | 'isLoading' | 'error'> = {
-  data: { data: [], totalCount: 0 } as TokenPositionsResponse,
+  data: { data: [], totalCount: 0 },
   tokenAddress: null,
   blockchain: null,
   filters: {},
@@ -65,13 +69,20 @@ export const useTopTradersStore = create<TopTradersState>()(
 
     clearFilters: () => set({ filters: {} }),
 
-    upsertFromTrades: (trades) => set((state) => {
-      const items = state.data?.data;
-      if (!items || items.length === 0) return state;
+    upsertHolder: (holder) => set((state) => {
+      const items = [...state.data.data];
+      const idx = items.findIndex((h) => h.walletAddress === holder.walletAddress);
+      if (idx >= 0) {
+        items[idx] = holder;
+      } else {
+        items.push(holder);
+      }
+      return { data: { ...state.data, data: items, totalCount: items.length } };
+    }),
 
-      const { positions } = applyTradesToPositions(items, trades);
-
-      return { data: { ...state.data, data: positions } };
+    removeHolder: (walletAddress) => set((state) => {
+      const items = state.data.data.filter((h) => h.walletAddress !== walletAddress);
+      return { data: { ...state.data, data: items, totalCount: items.length } };
     }),
 
     reset: () => set(initialState),

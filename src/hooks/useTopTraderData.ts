@@ -1,10 +1,8 @@
 // hooks/useTopTradersData.ts
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useTopTradersStore } from '@/store/useTopTraderStore';
-import { sdk, streams } from '@/lib/sdkClient';
-import type { TokenPositionsParams, TokenPositionsResponse } from '@mobula_labs/types';
-import type { StreamTradeEvent } from '@/features/pair/store/usePairHolderStore';
-import { UpdateBatcher } from '@/utils/UpdateBatcher';
+import { getClientSdk } from '@/lib/sdkClient';
+import type { TokenPositionsOutputResponse } from '@mobula_labs/types';
 
 interface UseTopTradersDataParams {
   tokenAddress: string;
@@ -26,154 +24,106 @@ export function useTopTradersData({ tokenAddress, blockchain }: UseTopTradersDat
     setData,
     setLoading,
     setError,
-    setTokenAddress,
-    setBlockchain,
-    setFilters,
     setFilter: setStoreFilter,
     clearFilters: clearStoreFilters,
-    upsertFromTrades,
+    upsertHolder,
+    removeHolder,
     reset,
   } = useTopTradersStore();
 
-  const isFetchingRef = useRef(false);
-  const lastFetchParamsRef = useRef<string>('');
-  const subscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
+  useEffect(() => {
+    if (!tokenAddress || !blockchain) return;
 
-  // Stable callback ref — avoids recreating the batcher
-  const callbackRef = useRef(upsertFromTrades);
-  callbackRef.current = upsertFromTrades;
+    reset();
+    setLoading(true);
 
-  const batcherRef = useRef(
-    new UpdateBatcher<StreamTradeEvent>((trades) => {
-      if (trades.length === 0) return;
-      callbackRef.current(trades);
-    }),
-  );
+    let cancelled = false;
+    let subId: string | null = null;
 
-  const fetchTopTraders = useCallback(
-    async (customFilters?: TopTradersFilters) => {
-      if (!tokenAddress || !blockchain) {
-        console.warn('[useTopTradersData] Missing required params:', { tokenAddress, blockchain });
-        return;
-      }
+    // Subscribe to holders stream with sortBy: 'realizedPnl' for top traders
+    const client = getClientSdk();
 
-      const filtersToUse = customFilters !== undefined ? customFilters : filters;
+    subId = client.streams.subscribe(
+      'holders',
+      {
+        tokens: [{ address: tokenAddress, blockchain }],
+        sortBy: 'realizedPnl',
+      },
+      (msg: unknown) => {
+        if (cancelled) return;
 
-      const fetchKey = JSON.stringify({ tokenAddress, blockchain, filters: filtersToUse });
-
-      if (isFetchingRef.current && lastFetchParamsRef.current === fetchKey) {
-        return;
-      }
-
-      isFetchingRef.current = true;
-      lastFetchParamsRef.current = fetchKey;
-
-      setLoading(true);
-      setError(null);
-      setTokenAddress(tokenAddress);
-      setBlockchain(blockchain);
-      setFilters(filtersToUse);
-
-      try {
-        const requestParams: TokenPositionsParams = {
-          address: tokenAddress,
-          blockchain: blockchain,
-          useSwapRecipient: true,
-          includeFees: true,
+        const message = msg as {
+          type?: string;
+          event?: string;
+          data?: {
+            tokenKey?: string;
+            holders?: TokenPositionsOutputResponse[];
+          } & TokenPositionsOutputResponse;
+          subscriptionId?: string;
         };
 
-        if (filtersToUse.label) {
-          requestParams.label = filtersToUse.label as TokenPositionsParams['label'];
-        }
-        if (filtersToUse.limit) {
-          requestParams.limit = filtersToUse.limit;
-        }
-        if (filtersToUse.walletAddresses && filtersToUse.walletAddresses.length > 0) {
-          requestParams.walletAddresses = filtersToUse.walletAddresses;
-        }
+        const type = message.type || message.event;
 
-        const response = await sdk.fetchTokenTraderPositions(requestParams) as TokenPositionsResponse;
+        switch (type) {
+          case 'init': {
+            const holders = message.data?.holders || [];
+            setData({ data: holders, totalCount: holders.length });
+            setLoading(false);
+            break;
+          }
 
-        if (response?.data) {
-          setData(response);
-          setLoading(false);
-        } else {
-          console.warn('[useTopTradersData] Empty response');
-          setError('No data received from API');
-          setLoading(false);
+          case 'update': {
+            const updateData = message.data;
+            if (!updateData?.walletAddress) break;
+
+            const balance = Number(updateData.tokenAmount) || 0;
+            if (balance <= 0) {
+              removeHolder(updateData.walletAddress);
+            } else {
+              upsertHolder(updateData as TokenPositionsOutputResponse);
+            }
+            break;
+          }
+
+          case 'sync': {
+            const holders = message.data?.holders || [];
+            setData({ data: holders, totalCount: holders.length });
+            break;
+          }
+
+          case 'subscribed':
+          case 'error':
+            if (type === 'error') {
+              setError('Stream error');
+              setLoading(false);
+            }
+            break;
+
+          default:
+            break;
         }
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to fetch top traders';
-        console.error('[useTopTradersData] Error:', {
-          error: err,
-          message: errorMessage,
-        });
-        setError(errorMessage);
-        setLoading(false);
-      } finally {
-        isFetchingRef.current = false;
+      },
+    );
+
+    return () => {
+      cancelled = true;
+      if (subId) {
+        client.streams.unsubscribe('holders', subId);
       }
-    },
-    [tokenAddress, blockchain, filters, setData, setLoading, setError, setTokenAddress, setBlockchain, setFilters]
-  );
+      reset();
+    };
+  }, [tokenAddress, blockchain, reset, setData, setLoading, setError, upsertHolder, removeHolder]);
 
   const setFilter = useCallback(
-    (key: keyof TopTradersFilters, value: any) => {
-      const newFilters = { ...filters, [key]: value };
-
+    (key: keyof TopTradersFilters, value: unknown) => {
       setStoreFilter(key, value);
-
-      fetchTopTraders(newFilters);
     },
-    [filters, setStoreFilter, fetchTopTraders]
+    [setStoreFilter]
   );
 
   const clearFilters = useCallback(() => {
     clearStoreFilters();
-
-    fetchTopTraders({});
-  }, [filters, clearStoreFilters, fetchTopTraders]);
-
-  useEffect(() => {
-    if (!tokenAddress || !blockchain) {
-      console.warn('[useTopTradersData] Skipping initial fetch - missing params');
-      return;
-    }
-
-    const init = async () => {
-      // 1. Subscribe first so we don't miss trades during the REST fetch
-      subscriptionRef.current?.unsubscribe();
-      subscriptionRef.current = streams.subscribeFastTrade(
-        {
-          assetMode: true,
-          items: [{ blockchain, address: tokenAddress }],
-        },
-        (trade: unknown) => {
-          const data = trade as StreamTradeEvent;
-          if (!data || data.event || !data.hash || !data.sender) return;
-          batcherRef.current.add(data);
-        },
-      );
-
-      // 2. Fetch initial data
-      await fetchTopTraders({});
-    };
-
-    init();
-
-    // Periodic resync every 30s to catch transfers and missed trades
-    const pollInterval = setInterval(() => {
-      fetchTopTraders({});
-    }, 30_000);
-
-    return () => {
-      clearInterval(pollInterval);
-      subscriptionRef.current?.unsubscribe();
-      subscriptionRef.current = null;
-      batcherRef.current.clear();
-      reset();
-    };
-  }, [tokenAddress, blockchain, reset]);
+  }, [clearStoreFilters]);
 
   return {
     data,
@@ -182,6 +132,6 @@ export function useTopTradersData({ tokenAddress, blockchain }: UseTopTradersDat
     error,
     setFilter,
     clearFilters,
-    refetch: () => fetchTopTraders(filters),
+    refetch: () => {},
   };
 }

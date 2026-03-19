@@ -123,7 +123,13 @@ export function TopTradersTable({
     );
   }
 
-  const hasData = data?.data && data.data.length > 0;
+  // Client-side label filtering
+  const filteredData = data?.data
+    ? filters.label
+      ? data.data.filter((t) => t.labels?.includes(filters.label!))
+      : data.data
+    : [];
+  const hasData = filteredData.length > 0;
 
   return (
     <TooltipProvider>
@@ -154,7 +160,7 @@ export function TopTradersTable({
               </thead>
 
               <tbody>
-                {data.data.map((trader, index) => {
+                {filteredData.map((trader, index) => {
                   const tokenAmountNum = Number(trader.tokenAmount);
                   const totalSupplyNum = Number(totalSupply);
                   const remainingPercent =
