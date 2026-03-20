@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
-import { getClientSdk } from '@/lib/sdkClient';
+import { useEffect, useRef } from 'react';
+import { getClientSdk, streams as streamWrapper } from '@/lib/sdkClient';
 import { usePairHoldersStore } from '@/features/pair/store/usePairHolderStore';
 import type { TokenPositionsOutputResponse } from '@mobula_labs/types';
 
@@ -30,6 +30,10 @@ export const useCombinedHolders = (
     removeHolder,
   } = usePairHoldersStore();
 
+  // Batch holder updates per animation frame to avoid per-message re-renders
+  const pendingUpdates = useRef(new Map<string, TokenPositionsOutputResponse>());
+  const rafScheduled = useRef(false);
+
   useEffect(() => {
     if (!tokenAddress || !blockchain) return;
 
@@ -38,9 +42,10 @@ export const useCombinedHolders = (
     if (tokenPrice) setTokenPrice(tokenPrice);
     if (totalSupply) setTotalSupply(totalSupply);
     setLoading(true);
+    pendingUpdates.current.clear();
+    rafScheduled.current = false;
 
     let cancelled = false;
-    let subId: string | null = null;
     let httpLoaded = false;
 
     // 1. Fast HTTP fetch for immediate display
@@ -68,9 +73,8 @@ export const useCombinedHolders = (
       });
 
     // 2. WS stream for real-time updates (will also send init snapshot)
-    const client = getClientSdk();
-
-    subId = client.streams.subscribe(
+    // Use the streams wrapper so it auto-routes to SSE in server mode
+    const sub = streamWrapper.subscribe(
       'holders',
       { tokens: [{ address: tokenAddress, blockchain }] },
       (msg: unknown) => {
@@ -104,11 +108,33 @@ export const useCombinedHolders = (
             const data = message.data;
             if (!data?.walletAddress) break;
 
-            const balance = Number(data.tokenAmount) || 0;
-            if (balance <= 0) {
-              removeHolder(data.walletAddress);
-            } else {
-              upsertHolder(data as TokenPositionsOutputResponse);
+            // Batch updates via rAF to avoid per-message re-renders
+            pendingUpdates.current.set(data.walletAddress, data as TokenPositionsOutputResponse);
+            if (!rafScheduled.current) {
+              rafScheduled.current = true;
+              requestAnimationFrame(() => {
+                rafScheduled.current = false;
+                const batch = pendingUpdates.current;
+                if (batch.size === 0) return;
+                const { holders } = usePairHoldersStore.getState();
+                const updated = [...holders];
+                for (const [wallet, pos] of batch) {
+                  const balance = Number(pos.tokenAmount) || 0;
+                  if (balance <= 0) {
+                    const idx = updated.findIndex((h) => h.walletAddress.toLowerCase() === wallet.toLowerCase());
+                    if (idx >= 0) updated.splice(idx, 1);
+                  } else {
+                    const idx = updated.findIndex((h) => h.walletAddress.toLowerCase() === wallet.toLowerCase());
+                    if (idx >= 0) {
+                      updated[idx] = pos;
+                    } else {
+                      updated.push(pos);
+                    }
+                  }
+                }
+                batch.clear();
+                usePairHoldersStore.setState({ holders: updated });
+              });
             }
             break;
           }
@@ -133,9 +159,7 @@ export const useCombinedHolders = (
 
     return () => {
       cancelled = true;
-      if (subId) {
-        client.streams.unsubscribe('holders', subId);
-      }
+      sub.unsubscribe();
       clearHolders();
       setLoading(false);
     };

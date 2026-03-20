@@ -1,7 +1,7 @@
 // hooks/useTopTradersData.ts
 import { useEffect, useCallback } from 'react';
 import { useTopTradersStore } from '@/store/useTopTraderStore';
-import { getClientSdk } from '@/lib/sdkClient';
+import { streams as streamWrapper } from '@/lib/sdkClient';
 import type { TokenPositionsOutputResponse } from '@mobula_labs/types';
 
 interface UseTopTradersDataParams {
@@ -38,12 +38,10 @@ export function useTopTradersData({ tokenAddress, blockchain }: UseTopTradersDat
     setLoading(true);
 
     let cancelled = false;
-    let subId: string | null = null;
 
     // Subscribe to holders stream with sortBy: 'realizedPnl' for top traders
-    const client = getClientSdk();
-
-    subId = client.streams.subscribe(
+    // Use the streams wrapper so it auto-routes to SSE in server mode
+    const sub = streamWrapper.subscribe(
       'holders',
       {
         tokens: [{ address: tokenAddress, blockchain }],
@@ -107,9 +105,7 @@ export function useTopTradersData({ tokenAddress, blockchain }: UseTopTradersDat
 
     return () => {
       cancelled = true;
-      if (subId) {
-        client.streams.unsubscribe('holders', subId);
-      }
+      sub.unsubscribe();
       reset();
     };
   }, [tokenAddress, blockchain, reset, setData, setLoading, setError, upsertHolder, removeHolder]);
