@@ -342,10 +342,10 @@ export function HoldersTable({ totalSupply }: HoldersTableProps) {
                 const remainingPercent = totalSupply > 0
                   ? (tokenAmount / totalSupply) * 100
                   : 0;
+                // Compute USD from live tokenPrice (updated on every trade via setTokenPrice)
                 const balanceUSD = tokenAmount * tokenPrice;
                 const avgBuyPrice = Number(holder.avgBuyPriceUSD) || 0;
                 const realizedPnlValue = Number(holder.realizedPnlUSD) || 0;
-                // Recalculate unrealized PnL from current price for real-time accuracy
                 const unrealizedPnlValue = avgBuyPrice > 0
                   ? balanceUSD - (avgBuyPrice * tokenAmount)
                   : (Number(holder.unrealizedPnlUSD) || 0);

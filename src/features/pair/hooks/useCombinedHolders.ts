@@ -92,9 +92,12 @@ export const useCombinedHolders = (
 
         const type = message.type || message.event;
 
+        console.log('[holders-stream] msg type:', type, 'keys:', message.data ? Object.keys(message.data).slice(0, 5) : 'no-data');
+
         switch (type) {
           case 'init': {
             const holders = message.data?.holders || [];
+            console.log('[holders-stream] init:', holders.length, 'holders, httpLoaded:', httpLoaded);
             // If HTTP already loaded, only use init if it has more/fresher data
             if (!httpLoaded || holders.length > 0) {
               setHoldersCount(holders.length);
@@ -106,9 +109,23 @@ export const useCombinedHolders = (
 
           case 'update': {
             const data = message.data;
-            if (!data?.walletAddress) break;
+            if (!data?.walletAddress) {
+              console.warn('[holders-stream] update missing walletAddress:', data);
+              break;
+            }
 
-            // Batch updates via rAF to avoid per-message re-renders
+            // Derive live price from the update (tokenAmountUSD / tokenAmount)
+            const updBalance = Number(data.tokenAmount) || 0;
+            const updUSD = Number(data.tokenAmountUSD) || 0;
+            console.log('[holders-stream] update:', data.walletAddress?.slice(0, 8), 'bal:', updBalance.toFixed(2), 'usd:', updUSD.toFixed(2), 'storePrice:', usePairHoldersStore.getState().tokenPrice.toFixed(6));
+            if (updBalance > 0 && updUSD > 0) {
+              const livePrice = updUSD / updBalance;
+              console.log('[holders-stream] derived price:', livePrice.toFixed(8), '-> setTokenPrice');
+              // This triggers USD recalculation for ALL holders
+              setTokenPrice(livePrice);
+            }
+
+            // Batch the individual holder update via rAF
             pendingUpdates.current.set(data.walletAddress, data as TokenPositionsOutputResponse);
             if (!rafScheduled.current) {
               rafScheduled.current = true;
@@ -118,11 +135,13 @@ export const useCombinedHolders = (
                 if (batch.size === 0) return;
                 const { holders } = usePairHoldersStore.getState();
                 const updated = [...holders];
+                let upserted = 0;
+                let removed = 0;
                 for (const [wallet, pos] of batch) {
                   const balance = Number(pos.tokenAmount) || 0;
                   if (balance <= 0) {
                     const idx = updated.findIndex((h) => h.walletAddress.toLowerCase() === wallet.toLowerCase());
-                    if (idx >= 0) updated.splice(idx, 1);
+                    if (idx >= 0) { updated.splice(idx, 1); removed++; }
                   } else {
                     const idx = updated.findIndex((h) => h.walletAddress.toLowerCase() === wallet.toLowerCase());
                     if (idx >= 0) {
@@ -130,8 +149,10 @@ export const useCombinedHolders = (
                     } else {
                       updated.push(pos);
                     }
+                    upserted++;
                   }
                 }
+                console.log('[holders-stream] rAF flush:', batch.size, 'pending, upserted:', upserted, 'removed:', removed, 'total:', updated.length);
                 batch.clear();
                 usePairHoldersStore.setState({ holders: updated });
               });
@@ -141,6 +162,7 @@ export const useCombinedHolders = (
 
           case 'sync': {
             const holders = message.data?.holders || [];
+            console.log('[holders-stream] sync:', holders.length, 'holders');
             setHoldersCount(holders.length);
             setHolders(holders);
             break;
