@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { getClientSdk, streams as streamWrapper } from '@/lib/sdkClient';
+import { sdk, streams as streamWrapper } from '@/lib/sdkClient';
 import { usePairHoldersStore } from '@/features/pair/store/usePairHolderStore';
 import type { TokenPositionsOutputResponse } from '@mobula_labs/types';
 
@@ -48,16 +48,12 @@ export const useCombinedHolders = (
     let cancelled = false;
     let httpLoaded = false;
 
-    // 1. Fast HTTP fetch for immediate display
-    fetch(
-      `https://api.mobula.io/api/2/token/holder-positions?address=${encodeURIComponent(tokenAddress)}&blockchain=${encodeURIComponent(blockchain)}&limit=100`,
-      {
-        headers: {
-          Authorization: getClientSdk().apiKey || '',
-        },
-      },
-    )
-      .then((res) => res.json())
+    // 1. Fast HTTP fetch for immediate display (uses SDK to respect API selector)
+    sdk.fetchTokenHolderPositions({
+      address: tokenAddress,
+      blockchain,
+      limit: 100,
+    })
       .then((json: { data?: TokenPositionsOutputResponse[]; totalCount?: number }) => {
         if (cancelled) return;
         const holders = json.data || [];
@@ -92,12 +88,9 @@ export const useCombinedHolders = (
 
         const type = message.type || message.event;
 
-        console.log('[holders-stream] msg type:', type, 'keys:', message.data ? Object.keys(message.data).slice(0, 5) : 'no-data');
-
         switch (type) {
           case 'init': {
             const holders = message.data?.holders || [];
-            console.log('[holders-stream] init:', holders.length, 'holders, httpLoaded:', httpLoaded);
             // If HTTP already loaded, only use init if it has more/fresher data
             if (!httpLoaded || holders.length > 0) {
               setHoldersCount(holders.length);
@@ -117,11 +110,8 @@ export const useCombinedHolders = (
             // Derive live price from the update (tokenAmountUSD / tokenAmount)
             const updBalance = Number(data.tokenAmount) || 0;
             const updUSD = Number(data.tokenAmountUSD) || 0;
-            console.log('[holders-stream] update:', data.walletAddress?.slice(0, 8), 'bal:', updBalance.toFixed(2), 'usd:', updUSD.toFixed(2), 'storePrice:', usePairHoldersStore.getState().tokenPrice.toFixed(6));
             if (updBalance > 0 && updUSD > 0) {
               const livePrice = updUSD / updBalance;
-              console.log('[holders-stream] derived price:', livePrice.toFixed(8), '-> setTokenPrice');
-              // This triggers USD recalculation for ALL holders
               setTokenPrice(livePrice);
             }
 
@@ -152,7 +142,6 @@ export const useCombinedHolders = (
                     upserted++;
                   }
                 }
-                console.log('[holders-stream] rAF flush:', batch.size, 'pending, upserted:', upserted, 'removed:', removed, 'total:', updated.length);
                 batch.clear();
                 usePairHoldersStore.setState({ holders: updated });
               });
@@ -162,7 +151,6 @@ export const useCombinedHolders = (
 
           case 'sync': {
             const holders = message.data?.holders || [];
-            console.log('[holders-stream] sync:', holders.length, 'holders');
             setHoldersCount(holders.length);
             setHolders(holders);
             break;

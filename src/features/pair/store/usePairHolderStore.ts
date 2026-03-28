@@ -94,26 +94,8 @@ export const usePairHoldersStore = create<PairHoldersState>((set, get) => ({
   setTokenPrice: (price) => {
     const state = get();
     if (price === state.tokenPrice) return;
-
-    // Recalculate USD values for all holders using the new price
-    const holders =
-      state.holders.length > 0
-        ? state.holders.map((h) => {
-            const balance = Number(h.tokenAmount) || 0;
-            const avgBuy = Number(h.avgBuyPriceUSD) || 0;
-            const unrealized = (price - avgBuy) * balance;
-            const realized = Number(h.realizedPnlUSD) || 0;
-            return {
-              ...h,
-              tokenAmountUSD: String(balance * price),
-              unrealizedPnlUSD: String(unrealized),
-              totalPnlUSD: String(realized + unrealized),
-              pnlUSD: String(realized + unrealized),
-            };
-          })
-        : state.holders;
-
-    set({ tokenPrice: price, holders });
+    // Only update the price – USD values are derived at render time
+    set({ tokenPrice: price });
   },
   setTotalSupply: (supply) => set({ totalSupply: supply }),
   setSortField: (field) => set({ sortField: field }),

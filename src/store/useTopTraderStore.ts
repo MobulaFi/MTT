@@ -77,6 +77,8 @@ export const useTopTradersStore = create<TopTradersState>()(
       } else {
         items.push(holder);
       }
+      // Re-sort by realized PnL (top traders view)
+      items.sort((a, b) => Number(b.realizedPnlUSD || 0) - Number(a.realizedPnlUSD || 0));
       return { data: { ...state.data, data: items, totalCount: items.length } };
     }),
 

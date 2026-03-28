@@ -202,10 +202,19 @@ export function HoldersTable({ totalSupply }: HoldersTableProps) {
           aVal = Number(a.volumeSellUSD) || 0;
           bVal = Number(b.volumeSellUSD) || 0;
           break;
-        case 'pnl':
-          aVal = Number(a.totalPnlUSD) || Number(a.pnlUSD) || 0;
-          bVal = Number(b.totalPnlUSD) || Number(b.pnlUSD) || 0;
+        case 'pnl': {
+          const aBalance = Number(a.tokenAmount) || 0;
+          const aAvgBuy = Number(a.avgBuyPriceUSD) || 0;
+          const aRealized = Number(a.realizedPnlUSD) || 0;
+          const aUnrealized = aAvgBuy > 0 ? (tokenPrice - aAvgBuy) * aBalance : 0;
+          aVal = aRealized + aUnrealized;
+          const bBalance = Number(b.tokenAmount) || 0;
+          const bAvgBuy = Number(b.avgBuyPriceUSD) || 0;
+          const bRealized = Number(b.realizedPnlUSD) || 0;
+          const bUnrealized = bAvgBuy > 0 ? (tokenPrice - bAvgBuy) * bBalance : 0;
+          bVal = bRealized + bUnrealized;
           break;
+        }
         case 'remaining':
           aVal = totalSupply > 0 ? (Number(a.tokenAmount) / totalSupply) * 100 : 0;
           bVal = totalSupply > 0 ? (Number(b.tokenAmount) / totalSupply) * 100 : 0;
@@ -483,7 +492,7 @@ export function HoldersTable({ totalSupply }: HoldersTableProps) {
                     <td className="text-left px-2">
                       <div className="flex flex-col">
                         <span className="text-white font-medium">
-                          {formatPureNumber(tokenAmount)}{(Number(holder.tokenAmountUSD) || balanceUSD) ? <span className="text-[10px] text-grayGhost font-normal"> (${formatPureNumber(Number(holder.tokenAmountUSD) || balanceUSD)})</span> : null}
+                          {formatPureNumber(tokenAmount)}{balanceUSD ? <span className="text-[10px] text-grayGhost font-normal"> (${formatPureNumber(balanceUSD)})</span> : null}
                         </span>
                         <span className="text-[10px] text-grayGhost">
                           {holder.lastActivityAt ? (
