@@ -29,7 +29,7 @@ export default function ResizablePanelsLayout({
   const { showTrades, setShowTrades } = useTradesPanelStore();
   const [selectedTab, setSelectedTab] = useState(defaultTab);
   const scrollable =
-    'scrollbar-thin scrollbar-thumb-[#22242D] scrollbar-track-transparent hover:scrollbar-thumb-[#343439]';
+    'scrollbar-thin scrollbar-thumb-[#161616] scrollbar-track-transparent hover:scrollbar-thumb-[#222222]';
 
   if (error) {
     return (
@@ -67,7 +67,7 @@ export default function ResizablePanelsLayout({
                   transition-all shadow-lg
                 "
               >
-                <ChevronLeft size={16} color="#C8C9D1" />
+                <ChevronLeft size={16} color="#B0B0B0" />
               </button>
             )}
           </div>

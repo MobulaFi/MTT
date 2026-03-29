@@ -3,7 +3,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export type Theme = 'Navy' | 'Frog' | 'Abyss';
+export type Theme = 'Obsidian' | 'Carbon' | 'Void';
 
 interface ThemeColors {
   bgPrimary: string;
@@ -20,26 +20,26 @@ interface ThemeState {
 }
 
 const themePresets: Record<Theme, ThemeColors> = {
-  Navy: { 
-    bgPrimary: '#121319', 
-    bgOverlay: '#0F1116', 
-    bgTableAlt: '#181A21', 
-    tableHover: '#1D2028', 
-    success: '#18C722' 
+  Obsidian: {
+    bgPrimary: '#0A0A0A',
+    bgOverlay: '#080808',
+    bgTableAlt: '#0F0F11',
+    tableHover: '#141416',
+    success: '#0ECB81',
   },
-  Frog: { 
-    bgPrimary: '#0F1010', 
-    bgOverlay: '#0F1010', 
-    bgTableAlt: '#131416', 
-    tableHover: '#18191B', 
-    success: '#90E059' 
+  Carbon: {
+    bgPrimary: '#0C0C0C',
+    bgOverlay: '#0A0A0A',
+    bgTableAlt: '#111113',
+    tableHover: '#161618',
+    success: '#0ECB81',
   },
-  Abyss: { 
-    bgPrimary: '#070D13', 
-    bgOverlay: '#070D13', 
-    bgTableAlt: '#0E1218', 
-    tableHover: '#14181F', 
-    success: '#75CA43' 
+  Void: {
+    bgPrimary: '#050505',
+    bgOverlay: '#030303',
+    bgTableAlt: '#0A0A0C',
+    tableHover: '#0F0F11',
+    success: '#0ECB81',
   },
 };
 
@@ -57,19 +57,29 @@ const applyCSSVariables = (colors: ThemeColors) => {
 export const useThemeStore = create(
   persist<ThemeState>(
     (set) => ({
-      theme: 'Navy',
-      colors: themePresets.Navy,
+      theme: 'Obsidian',
+      colors: themePresets.Obsidian,
       setTheme: (theme) => {
         const selected = themePresets[theme];
         applyCSSVariables(selected);
         set({ theme, colors: selected });
       },
     }),
-    { 
+    {
       name: 'theme-storage',
       onRehydrateStorage: () => (state) => {
-        // Re-apply on hydration (belt-and-suspenders approach)
         if (state) {
+          // Migrate old theme names to new ones
+          const themeMap: Record<string, Theme> = {
+            Navy: 'Obsidian',
+            Frog: 'Carbon',
+            Abyss: 'Void',
+          };
+          const mapped = themeMap[state.theme as string];
+          if (mapped) {
+            state.theme = mapped;
+            state.colors = themePresets[mapped];
+          }
           applyCSSVariables(state.colors);
         }
       },

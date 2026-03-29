@@ -18,7 +18,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/
 import { HOLDER_TAG_ICONS } from "@/assets/icons/HolderTags";
 import SafeImage from "@/components/SafeImage";
 import { useWalletDisplayName } from "@/hooks/useWalletDisplayName";
-import { useRenderCounter } from "@/utils/useRenderCounter";
 import { TraderTooltip } from "./TraderTooltip";
 
 type Transaction = FormattedTokenTradesResponse["data"][number];
@@ -251,9 +250,9 @@ const CompactTradeRow = memo(({
       </td>
       <td 
         className="text-left font-medium text-[10px] sm:text-xs text-grayGhost cursor-pointer hover:text-textPrimary pl-2 sm:pl-3"
-        onClick={() => onWalletClick(trade.sender, trade.hash, trade.blockchain)}
+        onClick={() => onWalletClick(trade.swapRecipient || trade.sender, trade.hash, trade.blockchain)}
       >
-        <TraderCell address={trade.sender} compact={true} blockchain={trade.blockchain} assetAddress={assetAddress} />
+        <TraderCell address={trade.swapRecipient || trade.sender} compact={true} blockchain={trade.blockchain} assetAddress={assetAddress} />
       </td>
       <td className="pr-2 sm:pr-3">
         <div className="flex items-center justify-end gap-0.5 sm:gap-1">
@@ -338,10 +337,10 @@ const TradeRow = memo(({
         <div className="inline-flex items-center space-x-0.5 sm:space-x-1">
           {trade.labels && <TradeLabels labels={trade.labels} compact={false} />}
           <span
-            onClick={() => onWalletClick(trade.sender, trade.hash, trade.blockchain)}
+            onClick={() => onWalletClick(trade.swapRecipient || trade.sender, trade.hash, trade.blockchain)}
             className="cursor-pointer px-0.5 sm:px-1 md:px-2 font-medium text-[10px] sm:text-xs text-grayGhost hover:text-textPrimary hover:underline underline-offset-2"
           >
-            <TraderCell address={trade.sender} compact={false} blockchain={trade.blockchain} assetAddress={assetAddress} />
+            <TraderCell address={trade.swapRecipient || trade.sender} compact={false} blockchain={trade.blockchain} assetAddress={assetAddress} />
           </span>
           {buildExplorerUrl(trade.blockchain, "tx", trade.hash) && (
             <a
@@ -349,12 +348,12 @@ const TradeRow = memo(({
               target="_blank"
               rel="noopener noreferrer"
             >
-              <ExternalLink color="#777A8C" size={11} className="sm:w-[13px] sm:h-[13px]" />
+              <ExternalLink color="#555555" size={11} className="sm:w-[13px] sm:h-[13px]" />
             </a>
           )}
           <Filter
-            color={currentWalletFilter === trade.sender ? "#B84FFF" : "#777A8C"}
-            onClick={() => onToggleWalletFilter(trade.sender)}
+            color={currentWalletFilter === trade.swapRecipient || trade.sender ? "#B84FFF" : "#555555"}
+            onClick={() => onToggleWalletFilter(trade.swapRecipient || trade.sender)}
             size={11}
             className="cursor-pointer hover:opacity-70 sm:w-[13px] sm:h-[13px]"
           />
@@ -389,9 +388,6 @@ const TradesTableComponent = ({
   showCurrencyToggle = false,
   assetAddress,
 }: TradesTableProps) => {
-  // Render counter for diagnostics
-  useRenderCounter('TradesTable');
-
   // Use granular selectors with shallow comparison to prevent unnecessary re-renders
   const orderBy = usePairTradeStore((s) => s.orderBy);
   const updateOrderBy = usePairTradeStore((s) => s.updateOrderBy);
@@ -474,7 +470,6 @@ const TradesTableComponent = ({
         sortOrder: orderBy,
         mode: isPair ? "pair" : "asset",
         formatted: true,
-        useSwapRecipient: true,
         ...(currentFilters.wallet && {
           transactionSenderAddresses: currentFilters.wallet,
         }),
@@ -602,7 +597,7 @@ const TradesTableComponent = ({
       {/* Compact Mode */}
       {compact ? (
         <div
-          className="w-full h-full overflow-y-auto scrollbar-thin scrollbar-thumb-[#22242D] scrollbar-track-transparent hover:scrollbar-thumb-[#343439]"
+          className="w-full h-full overflow-y-auto scrollbar-thin scrollbar-thumb-[#161616] scrollbar-track-transparent hover:scrollbar-thumb-[#222222]"
           onPointerEnter={handlePanelPointerEnter}
           onPointerLeave={handlePanelPointerLeave}
         >
@@ -646,7 +641,7 @@ const TradesTableComponent = ({
       ) : (
         // Full table mode
         <div
-          className="w-full h-full overflow-y-auto overflow-x-auto scrollbar-thin scrollbar-thumb-[#22242D] scrollbar-track-transparent hover:scrollbar-thumb-[#343439]"
+          className="w-full h-full overflow-y-auto overflow-x-auto scrollbar-thin scrollbar-thumb-[#161616] scrollbar-track-transparent hover:scrollbar-thumb-[#222222]"
           onPointerEnter={handlePanelPointerEnter}
           onPointerLeave={handlePanelPointerLeave}
         >

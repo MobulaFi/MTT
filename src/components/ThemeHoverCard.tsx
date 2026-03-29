@@ -7,12 +7,12 @@ import {
   HoverCardTrigger,
 } from '@/components/ui/hover-card';
 import { PaintbrushVertical } from 'lucide-react';
-import { useThemeStore } from '@/store/useThemeStore';
+import { useThemeStore, type Theme } from '@/store/useThemeStore';
 
-const themes = [
-  { name: 'Navy', color: '#18C722' },
-  { name: 'Frog', color: '#90E059' },
-  { name: 'Abyss', color: '#75CA43' },
+const themes: { name: Theme; color: string }[] = [
+  { name: 'Obsidian', color: '#0ECB81' },
+  { name: 'Carbon', color: '#777777' },
+  { name: 'Void', color: '#333333' },
 ];
 
 export function ThemeHoverCard() {
@@ -24,7 +24,7 @@ export function ThemeHoverCard() {
       <HoverCardTrigger asChild>
         <button
           onClick={() => setOpen(!open)}
-          className="p-1 rounded hover:bg-bgBaseAlt transition"
+          className="p-1 hover:bg-bgBaseAlt transition"
         >
           <PaintbrushVertical size={14} className="text-textPrimary" />
         </button>
@@ -46,19 +46,19 @@ export function ThemeHoverCard() {
             <button
               key={t.name}
               onClick={() => {
-                setTheme(t.name as any);
+                setTheme(t.name);
                 setOpen(false);
               }}
               className={clsx(
                 'w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold',
                 'hover:bg-bgTertiary text-grayGhost transition border',
-                theme === t.name ? 'border-success' : 'border-transparent'
+                theme === t.name ? 'border-borderPrimary' : 'border-transparent'
               )}
             >
               <span>{t.name}</span>
               <div
                 className={clsx(
-                  'w-2 h-2 rounded-sm transition-all',
+                  'w-2 h-2 transition-all',
                   theme === t.name ? 'opacity-100' : 'opacity-0'
                 )}
                 style={{ backgroundColor: t.color }}

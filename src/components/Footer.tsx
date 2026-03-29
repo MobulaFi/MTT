@@ -7,6 +7,8 @@ import dynamic from 'next/dynamic';
 import { ThemeHoverCard } from '@/components/ThemeHoverCard';
 import { useLighthouseStore } from '@/features/lighthouse/store/useLighthouseStore';
 import { useXTrackerStore } from '@/features/x-tracker/store/useXTrackerStore';
+import { useReclaimATAStore } from '@/store/useReclaimATAStore';
+import { useWalletConnectionStore } from '@/store/useWalletConnectionStore';
 
 const LighthousePopover = dynamic(
   () => import('@/features/lighthouse/components/LighthousePopover').then((m) => ({ default: m.LighthousePopover })),
@@ -19,7 +21,6 @@ const XTrackerPanel = dynamic(
 );
 
 const links = [
-  { name: 'Docs', href: 'https://docs.mobula.io/introduction' },
   { name: 'Support', href: 'https://t.me/mobuladevelopers' },
 ];
 
@@ -32,6 +33,10 @@ export function Footer() {
 
   const xTrackerIsFloating = useXTrackerStore((s) => s.isFloating);
   const setXTrackerFloating = useXTrackerStore((s) => s.setFloating);
+
+  const openReclaimATA = useReclaimATAStore((s) => s.open);
+  const reclaimIsOpen = useReclaimATAStore((s) => s.isOpen);
+  const isSolanaConnected = useWalletConnectionStore((s) => s.isSolanaConnected);
 
   // Click-outside for non-floating lighthouse popover
   useEffect(() => {
@@ -66,17 +71,15 @@ export function Footer() {
 
   return (
     <>
-      <footer className="w-full border-y border-borderDefault bg-bgPrimary py-[6px] px-4 flex items-center justify-between mt-auto">
-        <div className="flex items-center space-x-3">
-          <Link href="https://mobula.io/" target="_blank" rel="noopener noreferrer">
-            <Image src="/mobula.svg" alt="Mobula Logo" width={15} height={15} priority />
-          </Link>
+      <footer className="w-full border-t border-borderDefault bg-bgPrimary py-2 sm:py-2.5 px-4 sm:px-6 lg:px-8 flex items-center justify-between mt-auto">
+        <div className="flex items-center space-x-4 sm:space-x-5">
+          <Image src="/hawk.jpg" alt="Hawk Logo" width={28} height={28} priority className="rounded-full" />
           <ThemeHoverCard />
           <div ref={lighthouseContainerRef} className="relative">
             <button
               onClick={handleLighthouseToggle}
-              className={`text-xs transition-colors ${
-                isLighthouseOpen || lighthouseIsFloating ? 'text-success font-semibold' : 'text-textPrimary hover:text-success'
+              className={`text-[12px] sm:text-[13px] tracking-wide transition-colors ${
+                isLighthouseOpen || lighthouseIsFloating ? 'text-success font-semibold' : 'text-textSecondary hover:text-textPrimary'
               }`}
             >
               Lighthouse
@@ -85,25 +88,47 @@ export function Footer() {
           </div>
           <button
             onClick={handleXTrackerToggle}
-            className={`text-xs transition-colors ${
-              xTrackerIsFloating ? 'text-success font-semibold' : 'text-textPrimary hover:text-success'
+            className={`text-[12px] sm:text-[13px] tracking-wide transition-colors ${
+              xTrackerIsFloating ? 'text-success font-semibold' : 'text-textSecondary hover:text-textPrimary'
             }`}
           >
-            X Tracker
+            Tracker
           </button>
+          {isSolanaConnected && (
+            <button
+              onClick={openReclaimATA}
+              className={`text-[12px] sm:text-[13px] tracking-wide transition-colors ${
+                reclaimIsOpen ? 'text-success font-semibold' : 'text-textSecondary hover:text-textPrimary'
+              }`}
+            >
+              Reclaim ATA
+            </button>
+          )}
         </div>
-        <div className="flex space-x-6 text-xs font-normal text-textPrimary">
+        <div className="flex items-center space-x-5 text-[12px] sm:text-[13px] font-normal text-textSecondary">
           {links.map((link) => (
             <Link
               key={link.name}
               href={link.href}
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-success transition-colors"
+              className="hover:text-textPrimary transition-colors tracking-wide"
             >
               {link.name}
             </Link>
           ))}
+          <Link
+            href="https://docs.mobula.io/introduction"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-textTertiary hover:text-textSecondary transition-colors"
+          >
+            <span className="text-[10px] sm:text-[11px] tracking-wider">Powered by</span>
+            <Image src="/mobula.svg" alt="Mobula" width={13} height={13} className="opacity-40" />
+            <span className="text-[10px] sm:text-[11px] tracking-wider">Mobula</span>
+            <span className="text-[10px] sm:text-[11px] text-textTertiary/40 mx-0.5">|</span>
+            <span className="text-[10px] sm:text-[11px] tracking-wider">Get Data</span>
+          </Link>
         </div>
       </footer>
       {/* Floating panels rendered outside footer */}

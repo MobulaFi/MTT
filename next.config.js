@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   transpilePackages: ['@mobula/sdk', '@mobula/types'],
+  serverExternalPackages: ['@solana/kit', '@solana-program/memo', 'ws'],
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -32,7 +33,6 @@ const nextConfig = {
       'viem',
     ],
   },
-  serverExternalPackages: ['ws'],
   poweredByHeader: false,
   compress: true,
 };

@@ -51,7 +51,7 @@ export function PriceChart({ data, color: colorProp, height = 200 }: PriceChartP
     const priceRange = maxPrice - minPrice || 1;
 
     // Draw grid lines
-    ctx.strokeStyle = '#22242D';
+    ctx.strokeStyle = '#161616';
     ctx.lineWidth = 0.5;
 
     // Horizontal grid lines
@@ -64,7 +64,7 @@ export function PriceChart({ data, color: colorProp, height = 200 }: PriceChartP
 
       // Price labels
       const price = maxPrice - (priceRange / 5) * i;
-      ctx.fillStyle = '#777A8C';
+      ctx.fillStyle = '#555555';
       ctx.font = '10px monospace';
       ctx.textAlign = 'right';
       ctx.fillText((price * 100).toFixed(1) + '%', padding.left - 5, y + 3);
@@ -133,7 +133,7 @@ export function PriceChart({ data, color: colorProp, height = 200 }: PriceChartP
     }
 
     // Time labels
-    ctx.fillStyle = '#777A8C';
+    ctx.fillStyle = '#555555';
     ctx.font = '10px monospace';
     ctx.textAlign = 'center';
     

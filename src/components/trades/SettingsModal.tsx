@@ -16,22 +16,19 @@ const PRIORITY_FEE_PRESETS: { value: PriorityFeePreset; label: string; descripti
 ];
 
 export const SettingsModal: React.FC = () => {
-  const {
-    isSettingsOpen,
-    setSettingsOpen,
-    slippage,
-    setSlippage,
-    prequote,
-    setPrequote,
-    solanaSwapSettings,
-    setSolanaSwapSettings,
-  } = useTradingPanelStore();
+  // Only subscribe to settings-related state
+  const isSettingsOpen = useTradingPanelStore((s) => s.isSettingsOpen);
+  const slippage = useTradingPanelStore((s) => s.slippage);
+  const prequote = useTradingPanelStore((s) => s.prequote);
+  const solanaSwapSettings = useTradingPanelStore((s) => s.solanaSwapSettings);
+  // Actions via getState()
+  const { setSettingsOpen, setSlippage, setPrequote, setSolanaSwapSettings } = useTradingPanelStore.getState();
 
   const pathname = usePathname();
   
   const isSolanaChain = useMemo(() => {
     const chain = pathname ? extractChainFromPath(pathname) : null;
-    return chain?.startsWith('solana:') || false;
+    return chain?.toLowerCase().startsWith('solana') || false;
   }, [pathname]);
 
   if (!isSettingsOpen) return null;

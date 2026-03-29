@@ -1,8 +1,30 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { toast } from 'sonner';
 import { useXTrackerStore } from '../store/useXTrackerStore';
+import { extractMatches } from './useTokenResolver';
 import type { ResolvedTweet } from '../types';
+
+function playAlertSound() {
+  try {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    // Two-tone ascending alert chime
+    osc.frequency.setValueAtTime(660, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(990, ctx.currentTime + 0.1);
+    osc.frequency.setValueAtTime(990, ctx.currentTime + 0.12);
+    osc.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.2);
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.35);
+    osc.onended = () => ctx.close();
+  } catch {}
+}
 
 /**
  * Parses a raw tweet object from the Scrape.st WebSocket into our ResolvedTweet shape.
@@ -106,6 +128,19 @@ export function useXTrackerStream() {
                 const tweet = parseTweet(data);
                 if (tweet && tweet.tweetId && tweet.text) {
                   addTweet(tweet);
+
+                  // Alert if tweet contains token mentions
+                  const tokenMatches = extractMatches(tweet.text);
+                  if (tokenMatches.length > 0) {
+                    const soundEnabled = useXTrackerStore.getState().soundEnabled;
+                    if (soundEnabled) {
+                      playAlertSound();
+                    }
+                    toast.info(
+                      `@${tweet.username}: ${tokenMatches.slice(0, 3).join(', ')}`,
+                      { duration: 3000 },
+                    );
+                  }
                 }
               }
             } catch {

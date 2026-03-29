@@ -86,6 +86,9 @@ export function usePulseV2(
   const subscriptionInProgressRef = useRef(false);
   const initialDataLoadedRef = useRef(false);
   const restLoadInProgressRef = useRef(false);
+  // When REST loads data for the current subscription, skip the next WS init
+  // (WS init may have fewer tokens). Cleared on resubscription (filter change).
+  const skipWsInitRef = useRef(false);
 
   const lastProcessedMessageRef = useRef<string>('');
   const messageCountRef = useRef(0);
@@ -95,16 +98,14 @@ export function usePulseV2(
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
 
-  // Internal pause state (independent of UI pause)
-  const [isSubscriptionPausedInternal, setIsSubscriptionPausedInternal] = useState(false);
+  // Internal pause state as ref — avoids recreating handleMessage on pause toggle
+  const isPausedInternalRef = useRef(false);
 
   // Create batchers for batching updates using rAF
   const tokenUpdateBatcherRef = useRef<UpdateBatcher<{ view: ViewName; token: PulseToken }>>(
     new UpdateBatcher((updates) => {
-      // Batch apply all token updates
-      updates.forEach(({ view, token }) => {
-        pulseDataStore.mergeToken(view, token);
-      });
+      // Single batch state update instead of N individual mergeToken calls
+      usePulseDataStore.getState().mergeTokensBatch(updates);
     })
   );
 
@@ -113,18 +114,25 @@ export function usePulseV2(
       // Process only the latest init message
       const latestInit = updates[updates.length - 1];
       if (latestInit.type === 'init') {
+        // Skip WS init if REST already loaded data for this subscription —
+        // WS init often has fewer tokens than the REST snapshot.
+        if (skipWsInitRef.current) {
+          skipWsInitRef.current = false;
+          return;
+        }
+        const store = usePulseDataStore.getState();
         const payload = latestInit.payload;
         if (payload.new?.data) {
           const newTokens = Array.isArray(payload.new.data) ? payload.new.data : [payload.new.data];
-          pulseDataStore.setTokens('new', newTokens);
+          store.setTokens('new', newTokens);
         }
         if (payload.bonding?.data) {
           const bondingTokens = Array.isArray(payload.bonding.data) ? payload.bonding.data : [payload.bonding.data];
-          pulseDataStore.setTokens('bonding', bondingTokens);
+          store.setTokens('bonding', bondingTokens);
         }
         if (payload.bonded?.data) {
           const bondedTokens = Array.isArray(payload.bonded.data) ? payload.bonded.data : [payload.bonded.data];
-          pulseDataStore.setTokens('bonded', bondedTokens);
+          store.setTokens('bonded', bondedTokens);
         }
       }
     })
@@ -132,8 +140,13 @@ export function usePulseV2(
 
   const appliedSections = usePulseFilterStore((state) => state.appliedSections);
   const filtersVersion = usePulseFilterStore((state) => state.filtersVersion);
-  const { data, loading, error, setData, setLoading, setError } = usePulseV2Store();
-  const pulseDataStore = usePulseDataStore();
+  // Individual selectors for reactive state — actions via getState()
+  const data = usePulseV2Store((s) => s.data);
+  const loading = usePulseV2Store((s) => s.loading);
+  const error = usePulseV2Store((s) => s.error);
+  const setData = usePulseV2Store.getState().setData;
+  const setLoading = usePulseV2Store.getState().setLoading;
+  const setError = usePulseV2Store.getState().setError;
 
   // Hydration timer
   useEffect(() => {
@@ -441,14 +454,14 @@ export function usePulseV2(
         return;
       }
 
-      // Process all views in parallel for better performance
+      const store = usePulseDataStore.getState();
       const processView = (view: 'new' | 'bonding' | 'bonded', viewData: unknown) => {
         if (viewData && typeof viewData === 'object' && 'data' in viewData) {
           const viewDataTyped = viewData as PulseViewData;
           const tokens = Array.isArray(viewDataTyped.data)
             ? viewDataTyped.data
             : [viewDataTyped.data];
-          pulseDataStore.setTokens(view, tokens);
+          store.setTokens(view, tokens);
           return viewDataTyped;
         }
         return undefined;
@@ -469,7 +482,7 @@ export function usePulseV2(
       };
       setData(syntheticInit);
     },
-    [pulseDataStore, setData]
+    [setData]
   );
 
   /**
@@ -502,6 +515,8 @@ export function usePulseV2(
       const restResponse = await sdk.fetchPulseV2(restPayload) as PulseResponse;
       processRestResponse(restResponse);
       initialDataLoadedRef.current = true;
+      // Tell the init batcher to skip the next WS init (REST data is authoritative)
+      skipWsInitRef.current = true;
     } catch (e) {
       console.error('[usePulseV2] Failed to load initial data via REST:', e);
       // Don't block WebSocket on REST failure - WebSocket will provide the data
@@ -540,47 +555,32 @@ export function usePulseV2(
    */
   const handleMessage = useCallback(
     (msg: WssPulseV2ResponseType) => {
-      // Skip processing if paused
-      if (isSubscriptionPausedInternal) {
+      // Skip processing if paused (ref avoids callback recreation on toggle)
+      if (isPausedInternalRef.current) return;
+      if (!msg) return;
+
+      messageCountRef.current++;
+
+      if (msg.type === 'update-token' || msg.type === 'new-token') {
+        const viewName = msg.payload.viewName as ViewName;
+        const token = msg.payload.token;
+        // Queue update — batched via rAF, flushed as single mergeTokensBatch
+        if (viewName && token) {
+          tokenUpdateBatcherRef.current.add({ view: viewName, token });
+        }
+        // Skip setData for streaming updates — token data goes through DataStore,
+        // no need to also store raw messages (saves an extra state update + re-render)
         return;
       }
 
-      if (!msg) return;
-
-      // Track message count
-      messageCountRef.current++;
-
-      // Log token-specific updates
-      if (msg.type === 'update-token' || msg.type === 'new-token') {
-        const getViewName = msg.payload.viewName as ViewName;
-        const token = msg.payload.token;
-        if (PULSE_DEBUG) {
-          const tokenRecord = token as Record<string, unknown>;
-          const getTokenName = (tokenRecord?.name as string) || 'Unknown';
-          const getTokenAddress = (tokenRecord?.address as string) || 'Unknown';
-          const getCreatedAt = (tokenRecord?.createdAt as string) || new Date().toISOString();
-
-          const ageInSeconds = Math.floor(
-            (Date.now() - new Date(getCreatedAt).getTime()) / 1000
-          );
-
-        }
-
-        // Queue update instead of immediate processing (batched via rAF)
-        if (getViewName && token) {
-          tokenUpdateBatcherRef.current.add({ view: getViewName, token });
-        }
-      }
-
       if (msg.type === 'init') {
-        // Queue init message (batched via rAF)
         initBatcherRef.current.add(msg);
       }
 
-      // Store raw data for compatibility with existing code (still immediate for compatibility)
+      // Only store raw data for init messages (one-time, not perf sensitive)
       setData(msg);
     },
-    [setData, isSubscriptionPausedInternal, pulseDataStore]
+    [setData]
   );
 
   /**
@@ -676,16 +676,12 @@ export function usePulseV2(
     // Reset message tracking on resubscribe
     lastProcessedMessageRef.current = '';
     messageCountRef.current = 0;
+    // Allow next WS init (new subscription = new filter, REST won't reload)
+    skipWsInitRef.current = false;
 
-    // Wait for cleanup, then subscribe to WebSocket
-    const timer = setTimeout(() => {
-      isUnsubscribingRef.current = false;
-      subscribeToStream();
-    }, 100);
-
-    return () => {
-      clearTimeout(timer);
-    };
+    // Subscribe to WebSocket immediately after cleanup
+    isUnsubscribingRef.current = false;
+    subscribeToStream();
   }, [
     enabled,
     blockchain,
@@ -722,7 +718,7 @@ export function usePulseV2(
    * Stops processing new messages
    */
   const pauseSubscription = useCallback(() => {
-    setIsSubscriptionPausedInternal(true);
+    isPausedInternalRef.current = true;
   }, []);
 
   /**
@@ -730,7 +726,7 @@ export function usePulseV2(
    * Resumes processing new messages
    */
   const resumeSubscription = useCallback(() => {
-    setIsSubscriptionPausedInternal(false);
+    isPausedInternalRef.current = false;
   }, []);
 
   /**
@@ -773,7 +769,7 @@ export function usePulseV2(
       payloadStr,
       lastMessage: lastProcessedMessageRef.current.substring(0, 100),
       messageCount: messageCountRef.current,
-      isPausedInternal: isSubscriptionPausedInternal,
+      isPausedInternal: isPausedInternalRef.current,
     },
   };
 }

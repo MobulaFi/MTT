@@ -1,10 +1,12 @@
+'use client';
+
 import { Market } from '@/types/trading';
 import Image from 'next/image';
 import { HoldersTableSkeleton } from '../skeleton';
 import { formatPureNumber, formatUSD } from '@mobula_labs/sdk';
-import Link from 'next/link';
 import { PriceDisplay } from '../PriceDisplay';
 import { useState } from 'react';
+import { useNavigationStore } from '@/store/useNavigationStore';
 import { ArrowUpDown } from 'lucide-react';
 import { shouldMaskPrice } from '@/utils/tokenMetrics';
 
@@ -14,6 +16,7 @@ interface MarketsTableProps {
 }
 
 export function MarketsTable({ data, isLoading }: MarketsTableProps) {
+  const navigateToPair = useNavigationStore((s) => s.navigateToPair);
   const [showUSD, setShowUSD] = useState(true);
 
   if (isLoading) {
@@ -29,7 +32,7 @@ export function MarketsTable({ data, isLoading }: MarketsTableProps) {
   }
 
   return (
-    <div className="w-full h-full overflow-y-auto overflow-x-auto scrollbar-thin scrollbar-thumb-[#22242D] scrollbar-track-transparent hover:scrollbar-thumb-[#343439]">
+    <div className="w-full h-full overflow-y-auto overflow-x-auto scrollbar-thin scrollbar-thumb-[#161616] scrollbar-track-transparent hover:scrollbar-thumb-[#222222]">
       <table className="min-w-[600px] w-full text-xs bg-bgPrimary border-collapse table-fixed">
         <thead className="sticky top-0 z-20 bg-bgPrimary border-b border-borderDefault shadow-sm text-xs h-9">
           <tr>
@@ -56,7 +59,7 @@ export function MarketsTable({ data, isLoading }: MarketsTableProps) {
             <tr
               key={index}
               className={`
-               cursor-default border-b border-borderDefault/50 transition-colors h-10 bg-bgPrimary even:bg-bgTableAlt hover:bg-bgTableHover text-xs
+               cursor-default border-b border-borderDefault/50 transition-colors h-10 bg-bgSecondary even:bg-bgTableAlt hover:bg-bgTableHover text-xs
               `}
             >
               <td className="text-center text-grayGhost">{index + 1}</td>
@@ -83,12 +86,12 @@ export function MarketsTable({ data, isLoading }: MarketsTableProps) {
               </td>
 
               <td className="text-left text-textPrimary font-medium truncate max-w-[100px]">
-                <Link
-                  href={`/pair/${market.chainId}/${market.poolAddress}`}
-                  className="text-textPrimary font-medium text-xs truncate hover:underline"
+                <span
+                  className="text-textPrimary font-medium text-xs truncate hover:underline cursor-pointer"
+                  onClick={() => navigateToPair(market.poolAddress, market.chainId, market as unknown as Record<string, unknown>)}
                 >
                   {market.pair}
-                </Link>
+                </span>
               </td>
 
               <td className="text-left text-textPrimary">

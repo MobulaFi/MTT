@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { sdk, streams as streamWrapper } from '@/lib/sdkClient';
+import { useEffect } from 'react';
+import { getClientSdk, getRestBaseUrl, streams as streamWrapper } from '@/lib/sdkClient';
 import { usePairHoldersStore } from '@/features/pair/store/usePairHolderStore';
 import type { TokenPositionsOutputResponse } from '@mobula_labs/types';
 
@@ -30,10 +30,6 @@ export const useCombinedHolders = (
     removeHolder,
   } = usePairHoldersStore();
 
-  // Batch holder updates per animation frame to avoid per-message re-renders
-  const pendingUpdates = useRef(new Map<string, TokenPositionsOutputResponse>());
-  const rafScheduled = useRef(false);
-
   useEffect(() => {
     if (!tokenAddress || !blockchain) return;
 
@@ -42,18 +38,20 @@ export const useCombinedHolders = (
     if (tokenPrice) setTokenPrice(tokenPrice);
     if (totalSupply) setTotalSupply(totalSupply);
     setLoading(true);
-    pendingUpdates.current.clear();
-    rafScheduled.current = false;
 
     let cancelled = false;
     let httpLoaded = false;
 
-    // 1. Fast HTTP fetch for immediate display (uses SDK to respect API selector)
-    sdk.fetchTokenHolderPositions({
-      address: tokenAddress,
-      blockchain,
-      limit: 100,
-    })
+    // 1. Fast HTTP fetch for immediate display
+    fetch(
+      `${getRestBaseUrl()}/api/2/token/holder-positions?address=${encodeURIComponent(tokenAddress)}&blockchain=${encodeURIComponent(blockchain)}&limit=100`,
+      {
+        headers: {
+          Authorization: getClientSdk().apiKey || '',
+        },
+      },
+    )
+      .then((res) => res.json())
       .then((json: { data?: TokenPositionsOutputResponse[]; totalCount?: number }) => {
         if (cancelled) return;
         const holders = json.data || [];
@@ -102,49 +100,13 @@ export const useCombinedHolders = (
 
           case 'update': {
             const data = message.data;
-            if (!data?.walletAddress) {
-              console.warn('[holders-stream] update missing walletAddress:', data);
-              break;
-            }
+            if (!data?.walletAddress) break;
 
-            // Derive live price from the update (tokenAmountUSD / tokenAmount)
-            const updBalance = Number(data.tokenAmount) || 0;
-            const updUSD = Number(data.tokenAmountUSD) || 0;
-            if (updBalance > 0 && updUSD > 0) {
-              const livePrice = updUSD / updBalance;
-              setTokenPrice(livePrice);
-            }
-
-            // Batch the individual holder update via rAF
-            pendingUpdates.current.set(data.walletAddress, data as TokenPositionsOutputResponse);
-            if (!rafScheduled.current) {
-              rafScheduled.current = true;
-              requestAnimationFrame(() => {
-                rafScheduled.current = false;
-                const batch = pendingUpdates.current;
-                if (batch.size === 0) return;
-                const { holders } = usePairHoldersStore.getState();
-                const updated = [...holders];
-                let upserted = 0;
-                let removed = 0;
-                for (const [wallet, pos] of batch) {
-                  const balance = Number(pos.tokenAmount) || 0;
-                  if (balance <= 0) {
-                    const idx = updated.findIndex((h) => h.walletAddress.toLowerCase() === wallet.toLowerCase());
-                    if (idx >= 0) { updated.splice(idx, 1); removed++; }
-                  } else {
-                    const idx = updated.findIndex((h) => h.walletAddress.toLowerCase() === wallet.toLowerCase());
-                    if (idx >= 0) {
-                      updated[idx] = pos;
-                    } else {
-                      updated.push(pos);
-                    }
-                    upserted++;
-                  }
-                }
-                batch.clear();
-                usePairHoldersStore.setState({ holders: updated });
-              });
+            const balance = Number(data.tokenAmount) || 0;
+            if (balance <= 0) {
+              removeHolder(data.walletAddress);
+            } else {
+              upsertHolder(data as TokenPositionsOutputResponse);
             }
             break;
           }

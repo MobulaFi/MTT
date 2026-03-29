@@ -11,7 +11,9 @@ export interface Chain {
   id: string;
   name: string;
   label: string;
+  logo?: string;
 }
+
 
 export interface Protocol {
   id: string;
@@ -26,7 +28,7 @@ interface CachedMetadata {
   timestamp: number;
 }
 
-const CACHE_KEY = 'mobula_chains_protocols_cache';
+const CACHE_KEY = 'mobula_chains_protocols_cache_v2';
 const CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
 
 /**
@@ -34,14 +36,16 @@ const CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
  */
 const processMetadata = (metadata: SystemMetadataResponse['data']) => {
 
-  const chainMap = new Map<string, { name: string; label: string }>();
+  const chainMap = new Map<string, { name: string; label: string; logo: string }>();
   const chainProtocolMap: Record<string, Protocol[]> = {};
 
   // Build chains from SDK response
   metadata.chains.forEach((chain) => {
+    const branding = (chain as Record<string, unknown>).branding as Record<string, string> | undefined;
     chainMap.set(chain.id, {
       name: chain.name,
-      label: chain.name
+      label: chain.name,
+      logo: (branding?.logo || '').replace('https://metacore.mobula.io/', 'https://metadata.mobula.io/'),
     });
   });
 
@@ -66,6 +70,7 @@ const processMetadata = (metadata: SystemMetadataResponse['data']) => {
     id,
     name: data.name,
     label: data.label,
+    logo: data.logo,
   }));
 
   return { chains, chainProtocolMap };

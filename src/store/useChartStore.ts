@@ -1,5 +1,15 @@
 import { create } from 'zustand';
 
+const TIMEFRAME_KEY = 'mobula-chart-timeframe';
+
+function getPersistedTimeframe(): string {
+  try {
+    const stored = typeof window !== 'undefined' ? localStorage.getItem(TIMEFRAME_KEY) : null;
+    if (stored) return stored;
+  } catch { /* SSR / localStorage disabled */ }
+  return '1S';
+}
+
 interface ChartStore {
   isChartLoading: boolean;
   isChartReady: boolean;
@@ -14,7 +24,7 @@ interface ChartStore {
 export const useChartStore = create<ChartStore>((set, get) => ({
   isChartLoading: true,
   isChartReady: false,
-  timeframe: '1S',
+  timeframe: getPersistedTimeframe(),
 
   triggerChartLoading: () => {
     // Only trigger loading if chart is not already ready
@@ -43,10 +53,13 @@ export const useChartStore = create<ChartStore>((set, get) => ({
     // Only update if timeframe actually changed
     if (get().timeframe !== timeframe) {
       set({ timeframe });
+      // Persist to localStorage for cross-session preference
+      try { localStorage.setItem(TIMEFRAME_KEY, timeframe); } catch { /* noop */ }
     }
   },
 
   reset: () => {
-    set({ isChartLoading: true, isChartReady: false, timeframe: '1S' });
+    // Keep the persisted timeframe — don't reset the user's preference
+    set({ isChartLoading: true, isChartReady: false });
   },
 }));

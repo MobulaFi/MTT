@@ -1,17 +1,38 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { type Address } from 'viem';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useWalletConnectionStore } from '@/store/useWalletConnectionStore';
-import { MetaMaskConnector, PhantomConnector } from '@/lib/wallet/connectors';
-import { useWalletAvailability } from './wallet/useWalletAvailability';
-import { useWalletEventListeners } from './wallet/useWalletEventListeners';
-import { useAutoSwitchChain } from './wallet/useAutoSwitchChain';
+
+interface LinkedWalletAccount {
+  type: string;
+  address: string;
+  chainType?: string;
+  walletClientType?: string;
+}
+
+function findLinkedWallet(
+  accounts: LinkedWalletAccount[] | undefined,
+  chainType: string
+): string | null {
+  if (!accounts) return null;
+  const match = accounts.find(
+    (a) =>
+      a.type === 'wallet' &&
+      a.chainType === chainType &&
+      (a.walletClientType === 'privy' || a.walletClientType === 'privy-v2')
+  );
+  return match?.address ?? null;
+}
 
 export function useWalletConnection() {
+  const { login, logout, authenticated, ready, user } = usePrivy();
+  const { wallets } = useWallets();
+  const retryRef = useRef<NodeJS.Timeout | null>(null);
+
   const {
     evmAddress,
-    evmChain,
     isEvmConnected,
     solanaAddress,
     isSolanaConnected,
@@ -19,165 +40,61 @@ export function useWalletConnection() {
     setSolanaWallet,
     disconnectWallet,
     activeWalletType,
-    activeProvider,
   } = useWalletConnectionStore();
 
-  const { isMetaMaskAvailable, isPhantomAvailable } = useWalletAvailability();
+  useEffect(() => {
+    if (!ready) return;
+    if (retryRef.current) clearTimeout(retryRef.current);
 
-  useWalletEventListeners({
-    isEvmConnected,
-    isSolanaConnected,
-    evmChain,
-    setEvmWallet,
-    setSolanaWallet,
-  });
-
-  useAutoSwitchChain();
-
-  const connectMetaMask = useCallback(async () => {
-    try {
-      // Clear manual disconnect flag and disconnect first to ensure fresh connection
-      const { setManuallyDisconnected } = useWalletConnectionStore.getState();
-      setManuallyDisconnected(false);
-      
-      // Disconnect first if connected
-      if (evmAddress) {
-        setEvmWallet(null, null);
-        // Small delay to ensure state is cleared
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-      
-      // Connect - this will request fresh permission and return current account
-      const result = await MetaMaskConnector.connect();
-      
-      // Verify we got a valid address
-      if (!result.address) {
-        throw new Error('No address returned from MetaMask');
-      }
-      
-      setEvmWallet(result.address as Address, result.chain || null);
-      return result;
-    } catch (error) {
-      // On error, ensure we're disconnected
-      setEvmWallet(null, null);
-      throw MetaMaskConnector.parseError(error);
+    if (!authenticated || !user) {
+      disconnectWallet();
+      return;
     }
-  }, [setEvmWallet, evmAddress]);
 
-  const connectPhantom = useCallback(async () => {
-    try {
-      const result = await PhantomConnector.connect();
-      setSolanaWallet(result.address as string);
-      return result;
-    } catch (error) {
-      throw PhantomConnector.parseError(error);
-    }
-  }, [setSolanaWallet]);
+    const solAddr = findLinkedWallet(user.linkedAccounts as LinkedWalletAccount[], 'solana');
+    const evmWallet = wallets.find((w) => w.walletClientType === 'privy');
+    const evmAddr = evmWallet?.address ?? findLinkedWallet(user.linkedAccounts as LinkedWalletAccount[], 'ethereum');
 
-  const disconnectEvm = useCallback(async () => {
-    const { setManuallyDisconnected } = useWalletConnectionStore.getState();
-    // Set manual disconnect flag first to prevent event listeners from reconnecting
-    setManuallyDisconnected(true);
-    
-    // Try to revoke MetaMask permissions to fully disconnect
-    const { getMetaMaskProvider } = await import('@/lib/wallet/utils/getProvider');
-    const provider = getMetaMaskProvider();
-    if (provider) {
-      try {
-        // Try to revoke permissions if the method exists
-        // This will fully disconnect from MetaMask and require re-approval on next connect
-        await provider.request({
-          method: 'wallet_revokePermissions',
-          params: [{ eth_accounts: {} }],
-        });
-      } catch (error) {
-        // Ignore errors - wallet_revokePermissions might not be supported in all MetaMask versions
-        // or might fail, but we still want to disconnect locally
-      }
-    }
-    
-    if (evmAddress) {
-      setEvmWallet(null, null);
-    }
-  }, [evmAddress, setEvmWallet]);
+    setSolanaWallet(solAddr);
+    setEvmWallet(evmAddr ? (evmAddr as Address) : null);
 
-  const disconnectSolana = useCallback(async () => {
-    if (window.phantom?.solana) {
-      try {
-        await window.phantom.solana.disconnect();
-      } catch {
-        // Ignore disconnect errors
-      }
+    if (!solAddr && !evmAddr) {
+      retryRef.current = setTimeout(() => {
+        const store = useWalletConnectionStore.getState();
+        if (!store.isSolanaConnected && !store.isEvmConnected) {
+          const retrySol = findLinkedWallet(user.linkedAccounts as LinkedWalletAccount[], 'solana');
+          const retryEvm = findLinkedWallet(user.linkedAccounts as LinkedWalletAccount[], 'ethereum');
+          if (retrySol) store.setSolanaWallet(retrySol);
+          if (retryEvm) store.setEvmWallet(retryEvm as Address);
+        }
+      }, 2000);
     }
-    setSolanaWallet(null);
-  }, [setSolanaWallet]);
+
+    return () => {
+      if (retryRef.current) clearTimeout(retryRef.current);
+    };
+  }, [authenticated, ready, user, wallets, setEvmWallet, setSolanaWallet, disconnectWallet]);
+
+  const connect = useCallback(() => { login(); }, [login]);
 
   const disconnect = useCallback(async () => {
-    await Promise.all([disconnectEvm(), disconnectSolana()]);
+    await logout();
     disconnectWallet();
-  }, [disconnectEvm, disconnectSolana, disconnectWallet]);
-
-  const connectWallet = useCallback(async (provider: 'metamask' | 'phantom') => {
-    if (provider === 'metamask') {
-      return await connectMetaMask();
-    } else {
-      return await connectPhantom();
-    }
-  }, [connectMetaMask, connectPhantom]);
-
-  const switchChain = useCallback(async (chainId: number) => {
-    const { getMetaMaskProvider } = await import('@/lib/wallet/utils/getProvider');
-    const provider = getMetaMaskProvider();
-    if (!provider) {
-      throw new Error('EVM wallet not available');
-    }
-    const hexChainId = `0x${chainId.toString(16)}`;
-    await provider.request({
-      method: 'wallet_switchEthereumChain',
-      params: [{ chainId: hexChainId }],
-    });
-    // Chain update will be picked up by useWalletEventListeners / useAutoSwitchChain
-  }, []);
+  }, [logout, disconnectWallet]);
 
   return {
-    // Connection state
-    isConnected: isEvmConnected || isSolanaConnected,
-    address: evmAddress || solanaAddress || null,
-    chainId: evmChain?.id || null,
-    
-    // EVM state
-    evmAddress,
-    evmChain,
-    isEvmConnected,
-    
-    // Solana state
-    solanaAddress,
-    isSolanaConnected,
-    
-    // Active wallet info
+    isConnected: authenticated && (isEvmConnected || isSolanaConnected),
+    address: solanaAddress || evmAddress || null,
+    ready,
+    evmAddress, isEvmConnected,
+    solanaAddress, isSolanaConnected,
     activeWalletType,
-    activeProvider,
-    currentAddress: evmAddress || solanaAddress || null,
-    
-    // Connection methods
-    connectWallet,
-    connectMetaMask,
-    connectPhantom,
-    
-    // Disconnection methods
-    disconnect,
-    disconnectWallet: disconnect,
-    disconnectEvm,
-    disconnectSolana,
-
-    // EVM chain switch
-    switchChain,
-
-    // Provider availability
-    isMetaMaskAvailable,
-    isPhantomAvailable,
+    currentAddress: solanaAddress || evmAddress || null,
+    connect, connectWallet: connect,
+    disconnect, disconnectWallet: disconnect,
+    isMetaMaskAvailable: true, isPhantomAvailable: true,
+    switchChain: async (_chainId: number) => {},
+    chainId: null as number | null,
+    evmChain: null,
   };
 }
-
-// Re-export ChainSwitcher for backward compatibility
-export { ChainSwitcher } from '@/lib/wallet/utils';

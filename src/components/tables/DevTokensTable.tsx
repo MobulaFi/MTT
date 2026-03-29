@@ -1,10 +1,11 @@
+"use client";
 import { useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
 import { useTradingStore } from "@/store/tradingStore";
 import { getTokenAge } from "@/utils/Formatter";
 import { PriceDisplay } from "../PriceDisplay";
 import { shouldMaskLiquidity } from "@/utils/tokenMetrics";
-import Link from "next/link";
+import { useNavigationStore } from "@/store/useNavigationStore";
 
 interface DevTokensTableProps {
   wallet: string;
@@ -22,6 +23,7 @@ export function DevTokensTable({
     fetchDevTokens,
     loadMoreDevTokens,
   } = useTradingStore();
+  const navigateToPair = useNavigationStore((s) => s.navigateToPair);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -62,7 +64,7 @@ export function DevTokensTable({
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto overflow-x-auto scrollbar-thin scrollbar-thumb-[#22242D] scrollbar-track-transparent hover:scrollbar-thumb-[#343439] min-h-0"
+        className="flex-1 overflow-y-auto overflow-x-auto scrollbar-thin scrollbar-thumb-[#161616] scrollbar-track-transparent hover:scrollbar-thumb-[#222222] min-h-0"
       >
         <table className="min-w-[600px] w-full text-xs bg-bgPrimary border-collapse table-fixed">
           <thead className="sticky top-0 z-20 bg-bgPrimary border-b border-borderDefault shadow-sm">
@@ -103,12 +105,12 @@ export function DevTokensTable({
                       </div>
                     )}
 
-                    <Link
-                      href={`/pair/${token.chainId}/${token.poolAddress}`}
-                      className="text-textPrimary font-medium text-xs truncate hover:underline"
+                    <span
+                      className="cursor-pointer text-textPrimary font-medium text-xs truncate hover:underline"
+                      onClick={() => navigateToPair(token.poolAddress, token.chainId, token as unknown as Record<string, unknown>)}
                     >
                       {token.name}
-                    </Link>
+                    </span>
                   </div>
                 </td>
 

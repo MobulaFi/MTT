@@ -13,6 +13,8 @@ import {
   TooltipTrigger,
 } from '../ui/tooltip';
 import { HOLDER_TAG_ICONS } from '@/assets/icons/HolderTags';
+import { useWalletConnectionStore } from '@/store/useWalletConnectionStore';
+import { useWalletNicknameStore } from '@/store/useWalletNicknameStore';
 import { HoldersTableSkeleton } from '../skeleton';
 import { PriceDisplay } from '../PriceDisplay';
 import { useTopTradersData } from '@/hooks/useTopTraderData';
@@ -102,6 +104,11 @@ export function TopTradersTable({
     blockchain,
   });
 
+  const solanaAddress = useWalletConnectionStore((s) => s.solanaAddress);
+  const evmAddress = useWalletConnectionStore((s) => s.evmAddress);
+  const myAddress = solanaAddress || evmAddress;
+  const nicknames = useWalletNicknameStore((s) => s.nicknames);
+
   const handleLabelClick = (clickedLabel: string) => {
     if (filters.label === clickedLabel) {
       clearFilters();
@@ -134,7 +141,7 @@ export function TopTradersTable({
   return (
     <TooltipProvider>
       <div className="flex flex-col h-full">
-        <div className="flex-1 w-full overflow-y-auto overflow-x-auto scrollbar-thin scrollbar-thumb-[#22242D] scrollbar-track-transparent hover:scrollbar-thumb-[#343439]">
+        <div className="flex-1 w-full overflow-y-auto overflow-x-auto scrollbar-thin scrollbar-thumb-[#161616] scrollbar-track-transparent hover:scrollbar-thumb-[#222222]">
           {!hasData ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-grayGhost text-sm">
@@ -178,7 +185,7 @@ export function TopTradersTable({
                       <td className="text-left whitespace-nowrap">
                         <div className="inline-flex items-start justify-center space-x-2">
                           <Filter
-                            color={'#777A8C'}
+                            color={'#555555'}
                             size={13}
                             className="cursor-pointer hover:opacity-70 transition-opacity"
                           />
@@ -197,33 +204,65 @@ export function TopTradersTable({
                                 className="inline-flex items-center justify-center text-grayGhost hover:text-textPrimary transition-colors"
                                 title="View on explorer"
                               >
-                                <ExternalLink color="#777A8C" size={13} />
+                                <ExternalLink color="#555555" size={13} />
                               </a>
                             ) : null;
                           })()}
 
-                          <span
-                            onClick={() =>
-                              useWalletModalStore
-                                .getState()
-                                .openWalletModal({
-                                  walletAddress: trader.walletAddress,
-                                  txHash: trader.walletAddress,
-                                  blockchain: trader.chainId,
-                                })
-                            }
-                            className="text-accentPurple hover:underline-offset-2 hover:underline cursor-pointer truncate max-w-[200px] font-normal text-xs leading-4 tracking-normal align-middle"
-                          >
-                            {truncate(trader.walletAddress, {
-                              length: 4,
-                              mode: 'middle',
-                            })}
-                          </span>
+                          {(() => {
+                            const isMe = myAddress && trader.walletAddress?.toLowerCase() === myAddress.toLowerCase();
+                            const metadata = (trader as typeof trader & { walletMetadata?: WalletMetadata }).walletMetadata;
+                            const nickname = nicknames[trader.walletAddress?.toLowerCase()]?.name;
+                            const entityName = nickname || metadata?.entityName || metadata?.entityLabels?.[0] || null;
+                            const displayName = isMe ? 'ME' : entityName;
 
-                          {/* Wallet Entity (CEX, Market Maker, etc.) */}
-                          <WalletEntityBadge 
-                            metadata={(trader as typeof trader & { walletMetadata?: WalletMetadata }).walletMetadata} 
-                          />
+                            if (displayName) {
+                              return (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        navigator.clipboard.writeText(trader.walletAddress);
+                                      }}
+                                      className={`font-semibold text-xs cursor-pointer hover:opacity-80 transition-opacity truncate max-w-[120px] ${
+                                        isMe ? 'text-accentPurple' : 'text-amber-400'
+                                      }`}
+                                    >
+                                      {metadata?.entityLogo && !isMe && (
+                                        <img src={metadata.entityLogo} width={14} height={14} alt="" className="rounded-full inline mr-1 align-middle" />
+                                      )}
+                                      {displayName}
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="text-[10px]">
+                                    <span className="text-grayGhost">Click to copy: </span>
+                                    <span className="text-white font-mono">{truncate(trader.walletAddress, { length: 6, mode: 'middle' })}</span>
+                                  </TooltipContent>
+                                </Tooltip>
+                              );
+                            }
+
+                            return (
+                              <span
+                                onClick={() =>
+                                  useWalletModalStore
+                                    .getState()
+                                    .openWalletModal({
+                                      walletAddress: trader.walletAddress,
+                                      txHash: trader.walletAddress,
+                                      blockchain: trader.chainId,
+                                    })
+                                }
+                                className="text-accentPurple hover:underline-offset-2 hover:underline cursor-pointer truncate max-w-[200px] font-normal text-xs leading-4 tracking-normal align-middle"
+                              >
+                                {truncate(trader.walletAddress, {
+                                  length: 4,
+                                  mode: 'middle',
+                                })}
+                              </span>
+                            );
+                          })()}
 
                           {trader.labels && trader.labels.length > 0 && (
                             <div className="flex items-center space-x-1">

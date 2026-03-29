@@ -1,5 +1,24 @@
 import type { TokenPositionsOutputResponse } from '@mobula_labs/types';
-import type { StreamTradeEvent } from '@/features/pair/store/usePairHolderStore';
+
+interface StreamTradeEvent {
+  sender: string;
+  swapRecipient?: string | null;
+  type: 'buy' | 'sell';
+  tokenAmount: number;
+  tokenAmountUsd: number;
+  tokenPrice: number;
+  timestamp: number;
+  blockchain: string;
+  hash: string;
+  labels?: string[];
+  walletMetadata?: TokenPositionsOutputResponse['walletMetadata'];
+  token?: string;
+  event?: string;
+  postBalanceBaseToken?: string | null;
+  preBalanceBaseToken?: string | null;
+  postBalanceRecipientBaseToken?: string | null;
+  tokenAmountRaw?: string;
+}
 
 interface ApplyTradesOptions {
   /** Remove holders whose balance reaches 0 after a sell (used for holders view) */

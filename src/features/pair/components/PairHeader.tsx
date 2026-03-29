@@ -37,7 +37,7 @@ function pairToHeaderData(pairData: MarketDetailsResponse['data']): BaseHeaderDa
       deployer: quote?.deployer,
     },
     createdAt: pairData?.createdAt ?? undefined,
-    socials: pairData?.socials,
+    socials: pairData?.socials ?? { twitter: null, website: null, telegram: null, others: undefined },
     address: pairData?.address,
     exchangeLogo: pairData?.exchange?.logo ?? null,
     exchangeName: pairData?.exchange?.name ?? null,
@@ -47,7 +47,7 @@ function pairToHeaderData(pairData: MarketDetailsResponse['data']): BaseHeaderDa
 }
 
 interface PairHeaderProps {
-  pair: MarketDetailsResponse['data'];
+  pair: MarketDetailsResponse['data'] | null;
   address: string;
   blockchain: string;
 }

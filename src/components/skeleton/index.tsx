@@ -6,7 +6,7 @@ export function HoldersTableSkeleton() {
   const rowCount = 20;
   return (
     <div className="flex-1 flex flex-col h-full w-full overflow-hidden">
-      <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-[#22242D] scrollbar-track-transparent hover:scrollbar-thumb-[#343439]">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-[#161616] scrollbar-track-transparent hover:scrollbar-thumb-[#222222]">
         <table className="w-full text-sm table-fixed bg-bgPrimary">
           <thead className="text-grayGhost bg-bgPrimary sticky top-0 z-20 border-b border-borderDefault shadow-sm">
             <tr>
@@ -67,7 +67,7 @@ export function HoldersTableSkeleton() {
 export function TradeCompactSkeleton() {
   const rowCount = 20;
   return (
-    <div className="w-full h-full overflow-y-auto scrollbar-thin scrollbar-thumb-[#22242D] scrollbar-track-transparent hover:scrollbar-thumb-[#343439]">
+    <div className="w-full h-full overflow-y-auto scrollbar-thin scrollbar-thumb-[#161616] scrollbar-track-transparent hover:scrollbar-thumb-[#222222]">
       <table className="w-full text-xs bg-bgPrimary border-collapse table-fixed">
         <thead className="text-grayGhost sticky top-0 border-b border-borderDefault z-20 h-8 bg-bgPrimary shadow-sm">
           <tr>
@@ -103,7 +103,7 @@ export function TradeCompactSkeleton() {
 
 export const TradeWithoutCompactSkeleton = () => {
   return (
-    <div className="w-full h-full overflow-y-auto overflow-x-auto scrollbar-thin scrollbar-thumb-[#22242D] scrollbar-track-transparent hover:scrollbar-thumb-[#343439]">
+    <div className="w-full h-full overflow-y-auto overflow-x-auto scrollbar-thin scrollbar-thumb-[#161616] scrollbar-track-transparent hover:scrollbar-thumb-[#222222]">
       <table className="min-w-[400px] w-full text-xs bg-bgPrimary border-collapse table-fixed">
         <thead className="text-grayGhost sticky top-0 z-20 h-8 bg-bgPrimary border-b border-borderDefault shadow-sm">
           <tr>

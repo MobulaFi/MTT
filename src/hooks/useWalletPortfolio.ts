@@ -5,24 +5,16 @@ import { sdk } from '@/lib/sdkClient';
 import { useWalletPortfolioStore } from '@/store/useWalletPortfolioStore';
 
 export function useWalletPortfolio(walletAddress?: string, blockchain?: string) {
-  const {
-    setData,
-    setError,
-    setLoading,
-    setActivePositionData,
-    setWalletActivity,
-    setWalletHistory,
-    setHistoryLoading,
-    setActivityLoading,
-    setActivityError,
-    reset,
-    data,
-    activePositionData,
-    walletActivity,
-    walletHistory,
-    isLoading,
-    error,
-  } = useWalletPortfolioStore();
+  // Individual selectors for reactive state
+  const data = useWalletPortfolioStore((s) => s.data);
+  const activePositionData = useWalletPortfolioStore((s) => s.activePositionData);
+  const walletActivity = useWalletPortfolioStore((s) => s.walletActivity);
+  const walletHistory = useWalletPortfolioStore((s) => s.walletHistory);
+  const isLoading = useWalletPortfolioStore((s) => s.isLoading);
+  const error = useWalletPortfolioStore((s) => s.error);
+
+  // Actions via getState() — stable references, no re-renders
+  const { setData, setError, setLoading, setActivePositionData, setWalletActivity, setWalletHistory, setHistoryLoading, setActivityLoading, setActivityError, reset } = useWalletPortfolioStore.getState();
 
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -41,8 +33,6 @@ export function useWalletPortfolio(walletAddress?: string, blockchain?: string) 
           sdk.fetchWalletPositions({
             wallet: walletAddress,
             ...(blockchain ? { blockchains: blockchain } : {}),
-            useSwapRecipient: true,
-            includeFees: true,
           }),
           sdk.fetchWalletActivity({
             wallet: walletAddress,

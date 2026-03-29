@@ -26,11 +26,13 @@ import type {
   PulsePayloadParams,
   SwapSendParams,
   WalletPositionParams,
+  MarketMultiDataAssetParams,
   FastTradesPayloadType,
   TokenDetailsPayloadType,
   MarketDetailsPayloadType,
   OhlcvPayloadType,
   PositionPayloadType,
+  PositionsPayloadType,
 } from '@mobula_labs/types';
 import {
   DEFAULT_REST_ENDPOINT,
@@ -46,6 +48,13 @@ type ApiMode = 'server' | 'client';
 let clientSdkClient: MobulaClient | null = null;
 let currentClientRestUrl: string = REST_ENDPOINTS[DEFAULT_REST_ENDPOINT];
 let currentClientWssUrlMap: Partial<Record<keyof SubscriptionPayload, string>> = {};
+
+/**
+ * Get the currently configured REST base URL (e.g. https://api-2.mobula.io)
+ */
+export function getRestBaseUrl(): string {
+  return currentClientRestUrl;
+}
 
 interface StoredCustomWss {
   type: keyof SubscriptionPayload;
@@ -69,7 +78,7 @@ export function getCurrentApiMode(): ApiMode {
 /**
  * Get client API key from localStorage
  */
-function getClientApiKey(): string | undefined {
+export function getClientApiKey(): string | undefined {
   if (typeof window === 'undefined') return undefined;
   try {
     const raw = localStorage.getItem('mobula-api-storage');
@@ -124,10 +133,7 @@ function loadClientSettings(): void {
         for (const type of WSS_TYPES) {
           currentClientWssUrlMap[type] = selectedUrl;
         }
-      } else if (
-        parsed.state?.selectedWssRegion &&
-        parsed.state.selectedWssRegion !== DEFAULT_WSS_REGION
-      ) {
+      } else if (parsed.state?.selectedWssRegion) {
         const regionUrl = WSS_REGIONS[parsed.state.selectedWssRegion as keyof typeof WSS_REGIONS];
         if (regionUrl) {
           for (const type of WSS_TYPES) {
@@ -228,6 +234,8 @@ type SdkMethod =
   | 'fetchSystemMetadata'
   | 'swapSend'
   | 'fetchWalletPosition'
+  | 'fetchMarketMultiData'
+  | 'fetchTokenFilters'
   | 'fetchMarketLighthouse';
 
 /**
@@ -300,6 +308,8 @@ async function callSdk<T>(method: SdkMethod, params: Record<string, unknown>): P
       return client.fetchSwapTransaction(params as Parameters<typeof client.fetchSwapTransaction>[0]) as Promise<T>;
     case 'fetchWalletPosition':
       return client.fetchWalletPosition(params as Parameters<typeof client.fetchWalletPosition>[0]) as Promise<T>;
+    case 'fetchMarketMultiData':
+      return client.fetchMarketMultiData(params as Parameters<typeof client.fetchMarketMultiData>[0]) as Promise<T>;
     case 'fetchMarketLighthouse':
       return client.request<Record<string, unknown>, T>('get', '/api/2/market/lighthouse', params as Record<string, unknown>) as Promise<T>;
     default:
@@ -375,6 +385,9 @@ export const sdk = {
   fetchWalletPosition: (params: WalletPositionParams) =>
     callSdk('fetchWalletPosition', params),
 
+  fetchMarketMultiData: (params: MarketMultiDataAssetParams) =>
+    callSdk('fetchMarketMultiData', params),
+
   fetchMarketLighthouse: (params?: { blockchains?: string }) =>
     callSdk('fetchMarketLighthouse', params ?? {}),
 };
@@ -383,7 +396,7 @@ export const sdk = {
 // Streams Wrapper - Auto-route WebSocket based on mode
 // ============================================================================
 
-type StreamType = 'fast-trade' | 'pulse-v2' | 'token-details' | 'market-details' | 'ohlcv' | 'position' | 'stream-svm' | 'stream-evm' | 'holders';
+type StreamType = 'fast-trade' | 'pulse-v2' | 'token-details' | 'market-details' | 'ohlcv' | 'position' | 'positions' | 'stream-svm' | 'stream-evm' | 'holders';
 
 interface StreamSubscription {
   unsubscribe: () => void;
@@ -392,6 +405,27 @@ interface StreamSubscription {
 // Track active SSE connections for server mode
 const activeServerStreams = new Map<string, { controller: AbortController; eventSource: EventSource | null }>();
 let streamIdCounter = 0;
+
+function getResolvedWssUrl(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  try {
+    const raw = localStorage.getItem('mobula-api-storage');
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as {
+      state?: {
+        selectedAllModeWssUrl?: string;
+        selectedWssRegion?: string;
+        selectedIndividualWssType?: string;
+        customWssUrls?: { type: string; url: string }[];
+      };
+    };
+    if (parsed.state?.selectedAllModeWssUrl) return parsed.state.selectedAllModeWssUrl;
+    if (parsed.state?.selectedWssRegion) {
+      return WSS_REGIONS[parsed.state.selectedWssRegion as keyof typeof WSS_REGIONS] || undefined;
+    }
+  } catch { /* ignore */ }
+  return undefined;
+}
 
 /**
  * Subscribe to a stream - routes to SSE in server mode, direct WebSocket in client mode
@@ -407,6 +441,7 @@ function subscribeToStream(
     // Server mode: use SSE endpoint
     const streamId = `stream_${++streamIdCounter}`;
     const controller = new AbortController();
+    const wssUrl = getResolvedWssUrl();
 
     // Use fetch with streaming for SSE
     const connectSSE = async () => {
@@ -414,7 +449,7 @@ function subscribeToStream(
         const response = await fetch('/api/stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ streamType, payload }),
+          body: JSON.stringify({ streamType, payload, wssUrl }),
           signal: controller.signal,
         });
 
@@ -532,13 +567,23 @@ export const streams = {
   },
 
   /**
-   * Subscribe to position stream (wallet position updates)
+   * Subscribe to position stream (single token position updates)
    */
   subscribePosition: (
     params: PositionPayloadType,
     callback: (data: unknown) => void
   ): StreamSubscription => {
     return subscribeToStream('position', params, callback);
+  },
+
+  /**
+   * Subscribe to positions stream (ALL wallet positions — instant updates on any swap)
+   */
+  subscribePositions: (
+    params: PositionsPayloadType,
+    callback: (data: unknown) => void
+  ): StreamSubscription => {
+    return subscribeToStream('positions', params, callback);
   },
 
   /**

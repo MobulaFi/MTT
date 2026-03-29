@@ -21,22 +21,21 @@ import { usePriceDisplayStore } from '@/store/useDisplayPriceStore';
 import { MarketDetailsResponse } from '@mobula_labs/types';
 import { useTopTradersData } from '@/hooks/useTopTraderData';
 import { HOLDER_TAG_ICONS } from '@/assets/icons/HolderTags';
-import { useRenderCounter } from '@/utils/useRenderCounter';
 import type { Transaction } from '@/features/pair/store/usePairTradeStore';
 
 interface PairClientPanelsProps {
-  marketData: MarketDetailsResponse['data'];
+  marketData: MarketDetailsResponse['data'] | null;
   address: string;
   blockchain: string;
 }
 
 // Memoized action components
-const PairHoldersActions = memo(({ 
-  onToggleTrades, 
-  onToggleCurrency, 
-  displayCurrency, 
-  quoteCurrencySymbol 
-}: { 
+const PairHoldersActions = memo(({
+  onToggleTrades,
+  onToggleCurrency,
+  displayCurrency,
+  quoteCurrencySymbol
+}: {
   onToggleTrades: () => void;
   onToggleCurrency: () => void;
   displayCurrency: string;
@@ -61,13 +60,13 @@ const PairHoldersActions = memo(({
 ));
 PairHoldersActions.displayName = 'PairHoldersActions';
 
-const PairTradesActions = memo(({ 
-  deployer, 
-  isDevFilterActive, 
-  onToggleTrades, 
-  onToggleDevFilter, 
-  onOpenModal 
-}: { 
+const PairTradesActions = memo(({
+  deployer,
+  isDevFilterActive,
+  onToggleTrades,
+  onToggleDevFilter,
+  onOpenModal
+}: {
   deployer?: string;
   isDevFilterActive: boolean;
   onToggleTrades: () => void;
@@ -103,14 +102,14 @@ const PairTradesActions = memo(({
 ));
 PairTradesActions.displayName = 'PairTradesActions';
 
-const PairTopTradersActions = memo(({ 
-  filterLabel, 
-  onClearFilter, 
-  onToggleTrades, 
-  onToggleCurrency, 
-  displayCurrency, 
-  quoteCurrencySymbol 
-}: { 
+const PairTopTradersActions = memo(({
+  filterLabel,
+  onClearFilter,
+  onToggleTrades,
+  onToggleCurrency,
+  displayCurrency,
+  quoteCurrencySymbol
+}: {
   filterLabel?: string;
   onClearFilter: () => void;
   onToggleTrades: () => void;
@@ -155,16 +154,13 @@ function PairResizablePanelsComponent({
   address,
   blockchain,
 }: PairClientPanelsProps) {
-  // Render counter for diagnostics
-  useRenderCounter('PairResizablePanels');
-
   // Use granular selectors to prevent unnecessary re-renders
   // Extract individual filter values to prevent re-renders when object reference changes
   const filterWallet = useFilterModalStore((s) => s.currentFilters.wallet);
   const filterType = useFilterModalStore((s) => s.currentFilters.type);
   const filterMin = useFilterModalStore((s) => s.currentFilters.min);
   const filterMax = useFilterModalStore((s) => s.currentFilters.max);
-  
+
   // Reconstruct currentFilters object only when values actually change
   const currentFilters = useMemo(() => ({
     wallet: filterWallet,
@@ -172,7 +168,7 @@ function PairResizablePanelsComponent({
     min: filterMin,
     max: filterMax,
   }), [filterWallet, filterType, filterMin, filterMax]);
-  
+
   const openModal = useFilterModalStore((s) => s.openModal);
   const setFilters = useFilterModalStore((s) => s.setFilters);
   const resetFilters = useFilterModalStore((s) => s.resetFilters);
@@ -185,12 +181,16 @@ function PairResizablePanelsComponent({
     resetFilters();
   }, [address, blockchain, resetFilters]);
 
+  // Derive addresses with fallbacks so hooks always get a value
+  const baseAddress = marketData?.base?.address ?? address;
+  const baseDeployer = marketData?.base?.deployer ?? undefined;
+
   // Data Hooks
   useCombinedHolders(
-    marketData.base.address, 
+    baseAddress,
     blockchain,
-    marketData.base.priceUSD ?? 0,
-    marketData.base.totalSupply ?? 0
+    marketData?.base?.priceUSD ?? 0,
+    marketData?.base?.totalSupply ?? 0,
   );
   // Use granular selector to prevent unnecessary re-renders
   const totalSupply = usePairStore((s) => s.totalSupply);
@@ -202,16 +202,16 @@ function PairResizablePanelsComponent({
 
   // Use granular selector - only get markets, not entire hook return
   const tradingData = useTradingData(
-    marketData.address,
-    marketData.base.address,
+    marketData?.address ?? address,
+    baseAddress,
     blockchain,
-    marketData.base.deployer,
+    baseDeployer,
   );
   const markets = tradingData.markets;
   const tradeLoading = tradingData.isLoading.markets;
 
   const topTradersHook = useTopTradersData({
-    tokenAddress: marketData.base.address,
+    tokenAddress: baseAddress,
     blockchain,
   });
 
@@ -226,15 +226,15 @@ function PairResizablePanelsComponent({
 
   // Memoize currentFilters.wallet to prevent unnecessary callback recreation
   const currentWalletFilter = useMemo(() => currentFilters.wallet, [currentFilters.wallet]);
-  
+
   const handleToggleDevFilter = useCallback(() => {
-    const isDevFilterActive = currentWalletFilter === marketData.base.deployer;
+    const isDevFilterActive = currentWalletFilter === baseDeployer;
     if (isDevFilterActive) {
       setFilters({ wallet: undefined });
-    } else if (marketData.base.deployer) {
-      setFilters({ wallet: marketData.base.deployer });
+    } else if (baseDeployer) {
+      setFilters({ wallet: baseDeployer });
     }
-  }, [currentWalletFilter, marketData.base.deployer, setFilters]);
+  }, [currentWalletFilter, baseDeployer, setFilters]);
 
   const handleOpenModal = useCallback(() => {
     openModal();
@@ -245,7 +245,7 @@ function PairResizablePanelsComponent({
   }, [topTradersHook]);
 
   // Use memoized wallet filter for stable comparison
-  const isDevFilterActive = currentWalletFilter === marketData.base.deployer;
+  const isDevFilterActive = currentWalletFilter === baseDeployer;
 
   // Memoize table components
   const holdersTable = useMemo(() => (
@@ -254,11 +254,11 @@ function PairResizablePanelsComponent({
 
   const topTradersTable = useMemo(() => (
     <TopTradersTable
-      tokenAddress={marketData.base.address}
+      tokenAddress={baseAddress}
       blockchain={blockchain}
       totalSupply={totalSupply ?? 0}
     />
-  ), [marketData.base.address, blockchain, totalSupply]);
+  ), [baseAddress, blockchain, totalSupply]);
 
   // TradesTable subscribes to store internally - don't pass storeTrades prop
   const tradesTable = useMemo(() => (
@@ -267,18 +267,18 @@ function PairResizablePanelsComponent({
       storeTrades={[]} // Empty - TradesTable uses store directly
       isPair={true}
       showCurrencyToggle={true}
-      assetAddress={marketData.base.address}
+      assetAddress={baseAddress}
     />
-  ), [address, blockchain, marketData.base.address]); // NO tradesHook.wsTrades dependency!
+  ), [address, blockchain, baseAddress]); // NO tradesHook.wsTrades dependency!
 
   const devTokensTable = useMemo(() => (
-    marketData.base.deployer ? (
+    baseDeployer ? (
       <DevTokensTable
-        wallet={marketData.base.deployer}
+        wallet={baseDeployer}
         blockchain={blockchain}
       />
     ) : null
-  ), [marketData.base.deployer, blockchain]);
+  ), [baseDeployer, blockchain]);
 
   // Memoize markets with length check - only update if markets array actually changed
   const marketsLength = Array.isArray(markets) ? markets.length : 0;
@@ -298,6 +298,8 @@ function PairResizablePanelsComponent({
       <span>{displayCurrency === 'QUOTE' ? 'USD' : quoteCurrencySymbol}</span>
     </button>
   ), [displayCurrency, quoteCurrencySymbol, handleToggleCurrency]);
+
+  const baseSymbol = marketData?.base?.symbol;
 
   const tabs = useMemo(() => {
     const baseTabs = [
@@ -335,7 +337,7 @@ function PairResizablePanelsComponent({
         content: tradesTable,
         actions: (
           <PairTradesActions
-            deployer={marketData.base.deployer ?? undefined}
+            deployer={baseDeployer}
             isDevFilterActive={isDevFilterActive}
             onToggleTrades={handleToggleTrades}
             onToggleDevFilter={handleToggleDevFilter}
@@ -345,7 +347,7 @@ function PairResizablePanelsComponent({
       },
     ];
 
-    if (marketData.base.deployer && devTokensTable) {
+    if (baseDeployer && devTokensTable) {
       baseTabs.push({
         value: 'dev-tokens',
         label: 'Dev Tokens',
@@ -357,7 +359,7 @@ function PairResizablePanelsComponent({
     if (marketsLength > 0 && marketsTable) {
       baseTabs.push({
         value: 'markets',
-        label: `${marketData.base.symbol?.slice(0, 10)} Markets`,
+        label: `${baseSymbol?.slice(0, 10) ?? ''} Markets`,
         content: marketsTable,
         actions: currencyToggleButton,
       });
@@ -372,8 +374,8 @@ function PairResizablePanelsComponent({
     devTokensTable,
     marketsTable,
     currencyToggleButton,
-    marketData.base.deployer,
-    marketData.base.symbol,
+    baseDeployer,
+    baseSymbol,
     marketsLength,
     isDevFilterActive,
     topTradersHook.filters.label,
@@ -388,18 +390,19 @@ function PairResizablePanelsComponent({
     // REMOVED tradesHook.wsTrades - this was causing re-renders!
   ]);
 
-  // Memoize base asset
+  // Use address prop as fallback so the chart can init before marketData loads
   const baseAsset = useMemo(
     () => ({
       address,
       blockchain,
-      symbol: marketData.base.symbol ?? undefined,
-      priceUSD: marketData.base.priceUSD,
-      base: { symbol: marketData.base.symbol ?? undefined },
-      quote: { symbol: marketData.quote.symbol ?? undefined },
-      circulatingSupply: marketData.base.circulatingSupply ?? marketData.base.totalSupply ?? 0,
+      symbol: marketData?.base?.symbol ?? undefined,
+      priceUSD: marketData?.base?.priceUSD,
+      base: { symbol: marketData?.base?.symbol ?? undefined },
+      quote: { symbol: marketData?.quote?.symbol ?? undefined },
+      circulatingSupply: marketData?.base?.circulatingSupply ?? marketData?.base?.totalSupply ?? 0,
     }),
-    [address, blockchain, marketData.base.symbol, marketData.base.priceUSD, marketData.base.circulatingSupply, marketData.base.totalSupply, marketData.quote.symbol],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [address, blockchain, marketData?.base?.symbol, marketData?.base?.circulatingSupply, marketData?.quote?.symbol],
   );
 
   // Memoize chart component - wallet address is handled internally by chart
@@ -407,9 +410,9 @@ function PairResizablePanelsComponent({
     <TradingViewChart
       isPair
       baseAsset={baseAsset}
-      deployer={marketData.base.deployer ?? undefined}
+      deployer={baseDeployer}
     />
-  ), [baseAsset, marketData.base.deployer]);
+  ), [baseAsset, baseDeployer]);
 
   // Memoize trades sidebar - TradesTable subscribes to store internally
   const tradesSidebar = useMemo(() => (
@@ -418,9 +421,9 @@ function PairResizablePanelsComponent({
       storeTrades={[]} // Empty - TradesTable uses store directly
       isPair
       compact
-      assetAddress={marketData.base.address}
+      assetAddress={baseAddress}
     />
-  ), [address, blockchain, marketData.base.address]); // NO tradesHook.wsTrades dependency!
+  ), [address, blockchain, baseAddress]); // NO tradesHook.wsTrades dependency!
 
   return (
     <>
@@ -442,4 +445,3 @@ export default memo(PairResizablePanelsComponent, (prevProps, nextProps) => {
     prevProps.marketData?.address === nextProps.marketData?.address
   );
 });
-

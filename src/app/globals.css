@@ -6,18 +6,18 @@
 /* Define font and color variables */
 :root {
   --font-menlo: "Menlo", monospace;
-  --bg-primary: #121319;
-  --bg-overlay: #0F1116;  
-  --bg-tableAlt: #181A21; 
-  --bg-tableHover: #1D2028; 
-  --success: #18C722;
+  --bg-primary: #0A0A0A;
+  --bg-overlay: #080808;
+  --bg-tableAlt: #0F0F11;
+  --bg-tableHover: #141416;
+  --success: #0ECB81;
 }
 
 /* Apply global styles */
 body {
   font-family: var(--font-menlo);
   color: var(--foreground, #a0a0a0);
-  background: var(--bg-primary, #121319);
+  background: var(--bg-primary, #0A0A0A);
 }
 
 /* Let Tailwind utilities use these variables dynamically */
@@ -61,7 +61,7 @@ body {
 
 /* Vertical scrollbar thumb */
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: #777A8C;
+  background-color: #555555;
   border-radius: 6px;
 
   
@@ -69,7 +69,7 @@ body {
 
 /* Vertical scrollbar track */
 .custom-scrollbar::-webkit-scrollbar-track {
-  background-color: #14151E;
+  background-color: #0E0E0E;
   border-radius: 6px;
 
 
@@ -77,11 +77,11 @@ body {
 
 /* Dark mode overrides (if needed) */
 .dark .custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: #777A8C;
+  background-color: #555555;
 }
 
 .dark .custom-scrollbar::-webkit-scrollbar-track {
-  background-color: #14151E;
+  background-color: #0E0E0E;
 }
 
 
@@ -175,6 +175,85 @@ input[type=number] {
   display: none;
 }
 
+
+/* Toast spinner */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Trade toast shake animation */
+@keyframes tradeShake {
+  0%, 100% { transform: translateX(0); }
+  10% { transform: translateX(-4px); }
+  20% { transform: translateX(4px); }
+  30% { transform: translateX(-3px); }
+  40% { transform: translateX(3px); }
+  50% { transform: translateX(-2px); }
+  60% { transform: translateX(2px); }
+  70% { transform: translateX(-1px); }
+  80% { transform: translateX(1px); }
+}
+
+.trade-toast-shake {
+  animation: tradeShake 0.5s ease-out;
+}
+
+/* Navbar hover glow — Axiom-style subtle highlight */
+.nav-item-hover {
+  position: relative;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+.nav-item-hover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  background: radial-gradient(ellipse at 50% 100%, rgba(14, 203, 129, 0.06) 0%, transparent 70%);
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+.nav-item-hover:hover::after {
+  opacity: 1;
+}
+
+/* Active nav glow underline */
+.nav-item-active {
+  position: relative;
+}
+.nav-item-active::before {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 25%;
+  right: 25%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #0ECB81, transparent);
+  border-radius: 1px;
+}
+
+/* Wallet dropdown slide-in */
+@keyframes dropdownSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.dropdown-animate {
+  animation: dropdownSlideIn 0.15s ease-out;
+}
+
+/* Header button glow on hover */
+.header-btn {
+  transition: all 0.15s ease;
+}
+.header-btn:hover {
+  box-shadow: 0 0 0 1px rgba(14, 203, 129, 0.1), 0 1px 4px rgba(0, 0, 0, 0.3);
+}
 
 .sc-dUMaFF.iLJvQa {
   display: none;

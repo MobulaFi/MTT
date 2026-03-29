@@ -8,6 +8,7 @@ import { useXTrackerStream } from '../hooks/useXTrackerStream';
 import { useDragAndDrop } from '@/hooks/trading/useDragAndDrop';
 import TrackedUsersList from './TrackedUsersList';
 import TweetFeed from './TweetFeed';
+import XTrackerSettings from './XTrackerSettings';
 
 interface XTrackerPanelProps {
   /** When true, renders inline (for the /x-tracker page). When false, only renders when isFloating. */
@@ -48,12 +49,13 @@ export function XTrackerPanel({ inline = false }: XTrackerPanelProps) {
         }`}
       >
         <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-textPrimary">X Tracker</span>
+          <span className="text-sm font-semibold text-textPrimary">Tracker</span>
           <div
             className={`w-2 h-2 rounded-full ${
               isStreamConnected ? 'bg-success animate-pulse' : 'bg-error'
             }`}
           />
+          <XTrackerSettings />
         </div>
         {isFloating && (
           <div className="flex items-center">

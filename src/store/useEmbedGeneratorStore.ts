@@ -41,10 +41,10 @@ const defaultState = {
   chain: 'evm:56', // BNB Smart Chain (BSC)
   address: '0x59264f02D301281f3393e1385c0aEFd446Eb0F00',
   resolution: '1minute' as EmbedResolution,
-  theme: 'Navy' as EmbedTheme | '',
-  candleUpColor: '#18C722',
+  theme: 'Navy' as EmbedTheme | '', // backward-compatible embed theme name
+  candleUpColor: '#0ECB81',
   candleDownColor: '#EF4444',
-  bgColor: '#121319', // Navy theme default
+  bgColor: '#0A0A0A', // Navy theme default
   chartWidth: '100%',
   chartHeight: '600',
   showSymbol: true,

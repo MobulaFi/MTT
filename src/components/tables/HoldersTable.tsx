@@ -1,9 +1,11 @@
 import { useState, useMemo, useCallback } from 'react';
 import { truncate, formatPercentage, buildExplorerUrl, formatPureNumber } from '@mobula_labs/sdk';
 import { getTokenAge } from '@/utils/Formatter';
-import { ExternalLink, ArrowUpDown, ChevronUp, ChevronDown, Funnel, X, Building2 } from 'lucide-react';
+import { ExternalLink, ArrowUpDown, ChevronUp, ChevronDown, Funnel, Building2 } from 'lucide-react';
 import { useWalletModalStore } from '@/store/useWalletModalStore';
 import { usePairHoldersStore, type HolderSortField } from '@/features/pair/store/usePairHolderStore';
+import { useWalletConnectionStore } from '@/store/useWalletConnectionStore';
+import { useWalletNicknameStore } from '@/store/useWalletNicknameStore';
 import { HOLDER_TAG_ICONS, PROMINENT_LABELS } from '@/assets/icons/HolderTags';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 import { HoldersTableSkeleton } from '../skeleton';
@@ -166,17 +168,20 @@ function FundingDisplay({ fundingInfo, blockchain }: {
 }
 
 export function HoldersTable({ totalSupply }: HoldersTableProps) {
-  const { 
-    holders, 
-    loading, 
-    blockchain, 
+  const {
+    holders,
+    loading,
+    blockchain,
     tokenPrice,
     sortField,
     sortDirection,
     toggleSort,
-    labelFilter,
-    setLabelFilter,
   } = usePairHoldersStore();
+
+  const solanaAddress = useWalletConnectionStore((s) => s.solanaAddress);
+  const evmAddress = useWalletConnectionStore((s) => s.evmAddress);
+  const myAddress = solanaAddress || evmAddress;
+  const nicknames = useWalletNicknameStore((s) => s.nicknames);
 
   // Sort holders based on current sort field and direction
   const sortedHolders = useMemo(() => {
@@ -202,19 +207,10 @@ export function HoldersTable({ totalSupply }: HoldersTableProps) {
           aVal = Number(a.volumeSellUSD) || 0;
           bVal = Number(b.volumeSellUSD) || 0;
           break;
-        case 'pnl': {
-          const aBalance = Number(a.tokenAmount) || 0;
-          const aAvgBuy = Number(a.avgBuyPriceUSD) || 0;
-          const aRealized = Number(a.realizedPnlUSD) || 0;
-          const aUnrealized = aAvgBuy > 0 ? (tokenPrice - aAvgBuy) * aBalance : 0;
-          aVal = aRealized + aUnrealized;
-          const bBalance = Number(b.tokenAmount) || 0;
-          const bAvgBuy = Number(b.avgBuyPriceUSD) || 0;
-          const bRealized = Number(b.realizedPnlUSD) || 0;
-          const bUnrealized = bAvgBuy > 0 ? (tokenPrice - bAvgBuy) * bBalance : 0;
-          bVal = bRealized + bUnrealized;
+        case 'pnl':
+          aVal = Number(a.totalPnlUSD) || Number(a.pnlUSD) || 0;
+          bVal = Number(b.totalPnlUSD) || Number(b.pnlUSD) || 0;
           break;
-        }
         case 'remaining':
           aVal = totalSupply > 0 ? (Number(a.tokenAmount) / totalSupply) * 100 : 0;
           bVal = totalSupply > 0 ? (Number(b.tokenAmount) / totalSupply) * 100 : 0;
@@ -242,19 +238,7 @@ export function HoldersTable({ totalSupply }: HoldersTableProps) {
     return sorted;
   }, [holders, sortField, sortDirection, tokenPrice, totalSupply]);
 
-  // Filter by label if needed
-  const filteredHolders = useMemo(() => {
-    if (!labelFilter) return sortedHolders;
-    return sortedHolders.filter(h => h.labels?.includes(labelFilter));
-  }, [sortedHolders, labelFilter]);
-
-  const handleLabelClick = useCallback((label: string) => {
-    if (labelFilter === label) {
-      setLabelFilter(null);
-    } else {
-      setLabelFilter(label);
-    }
-  }, [labelFilter, setLabelFilter]);
+  const filteredHolders = sortedHolders;
 
   if (loading || !holders) {
     return <HoldersTableSkeleton />;
@@ -271,21 +255,7 @@ export function HoldersTable({ totalSupply }: HoldersTableProps) {
   return (
     <TooltipProvider>
       <div className="flex-1 flex flex-col h-full w-full overflow-hidden">
-        {/* Active filter indicator */}
-        {labelFilter && (
-          <div className="flex items-center gap-2 px-4 py-2 bg-bgContainer border-b border-borderDefault">
-            <span className="text-xs text-grayGhost">Filtering by:</span>
-            <button
-              onClick={() => setLabelFilter(null)}
-              className="flex items-center gap-1 px-2 py-0.5 bg-accentPurple/20 text-accentPurple rounded text-xs hover:bg-accentPurple/30 transition-colors"
-            >
-              {labelFilter}
-              <X size={12} />
-            </button>
-          </div>
-        )}
-
-        <div className="flex-1 overflow-y-auto overflow-x-auto scrollbar-thin scrollbar-thumb-[#22242D] scrollbar-track-transparent hover:scrollbar-thumb-[#343439]">
+        <div className="flex-1 overflow-y-auto overflow-x-auto scrollbar-thin scrollbar-thumb-[#161616] scrollbar-track-transparent hover:scrollbar-thumb-[#222222]">
           <table className="min-w-[900px] w-full text-xs bg-bgPrimary border-collapse">
             <thead className="text-grayGhost bg-bgPrimary h-9 sticky top-0 z-20 border-b border-borderDefault shadow-sm text-xs">
               <tr>
@@ -351,10 +321,10 @@ export function HoldersTable({ totalSupply }: HoldersTableProps) {
                 const remainingPercent = totalSupply > 0
                   ? (tokenAmount / totalSupply) * 100
                   : 0;
-                // Compute USD from live tokenPrice (updated on every trade via setTokenPrice)
                 const balanceUSD = tokenAmount * tokenPrice;
                 const avgBuyPrice = Number(holder.avgBuyPriceUSD) || 0;
                 const realizedPnlValue = Number(holder.realizedPnlUSD) || 0;
+                // Recalculate unrealized PnL from current price for real-time accuracy
                 const unrealizedPnlValue = avgBuyPrice > 0
                   ? balanceUSD - (avgBuyPrice * tokenAmount)
                   : (Number(holder.unrealizedPnlUSD) || 0);
@@ -372,7 +342,7 @@ export function HoldersTable({ totalSupply }: HoldersTableProps) {
                     {/* Filter icon */}
                     <td className="px-1">
                       <Funnel
-                        color="#777A8C"
+                        color="#555555"
                         size={12}
                         className="cursor-pointer hover:opacity-70 transition-opacity"
                       />
@@ -396,30 +366,63 @@ export function HoldersTable({ totalSupply }: HoldersTableProps) {
                           ) : null;
                         })()}
 
-                        {/* Don't make liquidity pool addresses clickable for wallet analysis */}
-                        {holder.labels?.includes('liquidityPool') ? (
-                          <span className="text-grayGhost truncate max-w-[100px]">
-                            {truncate(holder.walletAddress, { length: 4, mode: 'middle' })}
-                          </span>
-                        ) : (
-                          <span
-                            onClick={() =>
-                              useWalletModalStore.getState().openWalletModal({
-                                walletAddress: holder.walletAddress,
-                                txHash: holder.walletAddress,
-                                blockchain,
-                              })
-                            }
-                            className="text-accentPurple hover:underline-offset-2 hover:underline cursor-pointer truncate max-w-[100px]"
-                          >
-                            {truncate(holder.walletAddress, { length: 4, mode: 'middle' })}
-                          </span>
-                        )}
+                        {(() => {
+                          const isMe = myAddress && holder.walletAddress?.toLowerCase() === myAddress.toLowerCase();
+                          const metadata = (holder as typeof holder & { walletMetadata?: WalletMetadata }).walletMetadata;
+                          const nickname = nicknames[holder.walletAddress?.toLowerCase()]?.name;
+                          const entityName = nickname || metadata?.entityName || metadata?.entityLabels?.[0] || null;
+                          const displayName = isMe ? 'ME' : entityName;
 
-                        {/* Wallet Entity (CEX, Market Maker, etc.) */}
-                        <WalletEntityBadge 
-                          metadata={(holder as typeof holder & { walletMetadata?: WalletMetadata }).walletMetadata} 
-                        />
+                          if (displayName) {
+                            return (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      useWalletModalStore.getState().openWalletModal({
+                                        walletAddress: holder.walletAddress,
+                                        txHash: holder.walletAddress,
+                                        blockchain,
+                                      });
+                                    }}
+                                    className={`font-semibold text-xs cursor-pointer hover:underline hover:underline-offset-2 transition-opacity truncate max-w-[120px] ${
+                                      isMe ? 'text-accentPurple' : 'text-amber-400'
+                                    }`}
+                                  >
+                                    {metadata?.entityLogo && !isMe && (
+                                      <img src={metadata.entityLogo} width={14} height={14} alt="" className="rounded-full inline mr-1 align-middle" />
+                                    )}
+                                    {displayName}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="text-[10px]">
+                                  <span className="text-white font-mono">{truncate(holder.walletAddress, { length: 6, mode: 'middle' })}</span>
+                                </TooltipContent>
+                              </Tooltip>
+                            );
+                          }
+
+                          // No display name — show truncated address
+                          return holder.labels?.includes('liquidityPool') ? (
+                            <span className="text-grayGhost truncate max-w-[100px]">
+                              {truncate(holder.walletAddress, { length: 4, mode: 'middle' })}
+                            </span>
+                          ) : (
+                            <span
+                              onClick={() =>
+                                useWalletModalStore.getState().openWalletModal({
+                                  walletAddress: holder.walletAddress,
+                                  txHash: holder.walletAddress,
+                                  blockchain,
+                                })
+                              }
+                              className="text-accentPurple hover:underline-offset-2 hover:underline cursor-pointer truncate max-w-[100px]"
+                            >
+                              {truncate(holder.walletAddress, { length: 4, mode: 'middle' })}
+                            </span>
+                          );
+                        })()}
 
                         {/* Labels/Tags */}
                         {holder.labels && holder.labels.length > 0 && (
@@ -427,8 +430,7 @@ export function HoldersTable({ totalSupply }: HoldersTableProps) {
                             {holder.labels.map((tag: string) => {
                               const prominentLabel = PROMINENT_LABELS[tag];
                               const icon = HOLDER_TAG_ICONS[tag];
-                              const isActiveFilter = labelFilter === tag;
-                              
+
                               // Prominent labels get a full badge display
                               if (prominentLabel) {
                                 return (
@@ -437,25 +439,25 @@ export function HoldersTable({ totalSupply }: HoldersTableProps) {
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          handleLabelClick(tag);
+                                          useWalletModalStore.getState().openWalletModal({
+                                            walletAddress: holder.walletAddress,
+                                            txHash: holder.walletAddress,
+                                            blockchain,
+                                          });
                                         }}
-                                        className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wide transition-all cursor-pointer ${prominentLabel.className} ${
-                                          isActiveFilter ? 'ring-1 ring-white/30' : 'hover:brightness-110'
-                                        }`}
+                                        className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wide transition-all cursor-pointer ${prominentLabel.className} hover:brightness-110`}
                                       >
                                         {icon}
                                         {prominentLabel.text}
                                       </button>
                                     </TooltipTrigger>
                                     <TooltipContent side="top" className="text-[10px]">
-                                      <span className="text-grayGhost">
-                                        {isActiveFilter ? 'Click to clear filter' : 'Click to filter'}
-                                      </span>
+                                      <span className="text-grayGhost">Click to view wallet</span>
                                     </TooltipContent>
                                   </Tooltip>
                                 );
                               }
-                              
+
                               // Regular labels get icon only
                               return icon ? (
                                 <Tooltip key={tag}>
@@ -463,22 +465,20 @@ export function HoldersTable({ totalSupply }: HoldersTableProps) {
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        handleLabelClick(tag);
+                                        useWalletModalStore.getState().openWalletModal({
+                                          walletAddress: holder.walletAddress,
+                                          txHash: holder.walletAddress,
+                                          blockchain,
+                                        });
                                       }}
-                                      className={`transition-all cursor-pointer ${
-                                        isActiveFilter 
-                                          ? 'opacity-100 ring-1 ring-accentPurple/50 rounded' 
-                                          : 'opacity-70 hover:opacity-100'
-                                      }`}
+                                      className="transition-all cursor-pointer opacity-70 hover:opacity-100"
                                     >
                                       {icon}
                                     </button>
                                   </TooltipTrigger>
                                   <TooltipContent side="top" className="text-[10px]">
                                     <span className="font-medium">{tag}</span>
-                                    <span className="text-grayGhost ml-1">
-                                      {isActiveFilter ? '(click to clear)' : '(click to filter)'}
-                                    </span>
+                                    <span className="text-grayGhost ml-1">(click to view wallet)</span>
                                   </TooltipContent>
                                 </Tooltip>
                               ) : null;
@@ -492,7 +492,7 @@ export function HoldersTable({ totalSupply }: HoldersTableProps) {
                     <td className="text-left px-2">
                       <div className="flex flex-col">
                         <span className="text-white font-medium">
-                          {formatPureNumber(tokenAmount)}{balanceUSD ? <span className="text-[10px] text-grayGhost font-normal"> (${formatPureNumber(balanceUSD)})</span> : null}
+                          {formatPureNumber(tokenAmount)}
                         </span>
                         <span className="text-[10px] text-grayGhost">
                           {holder.lastActivityAt ? (

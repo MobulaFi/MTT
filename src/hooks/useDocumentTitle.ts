@@ -19,7 +19,7 @@ export function useDocumentTitle(title?: string) {
 
     return () => {
       // restore previous title (not hardcoded)
-      document.title = previousTitle.current || 'Mobula';
+      document.title = previousTitle.current || 'Hawk';
     };
   }, [title]);
 }

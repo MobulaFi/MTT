@@ -338,7 +338,7 @@ function EmbedPageContent() {
     setShowThemeDropdown(false);
     // Update bgColor based on theme
     const themeColors: Record<EmbedTheme, string> = {
-      Navy: '#121319',
+      Navy: '#0A0A0A',
       Frog: '#0F1010',
       Abyss: '#070D13',
       Light: '#FFFFFF',
@@ -401,8 +401,8 @@ function EmbedPageContent() {
     if (!iframeUrl) return '';
     
     return `<iframe
-  id="mobula-chart-embed"
-  title="Mobula Chart Embed"
+  id="hawk-chart-embed"
+  title="Hawk Chart Embed"
   src="${iframeUrl}"
   frameborder="0"
   allow="clipboard-write"
@@ -416,14 +416,10 @@ function EmbedPageContent() {
     
     try {
       await navigator.clipboard.writeText(iframeCode);
-      toast.success('Code copied to clipboard', {
-        duration: 2000,
-      });
+      toast.success('Copied');
     } catch (err) {
       console.error('Failed to copy:', err);
-      toast.error('Failed to copy code', {
-        duration: 2000,
-      });
+      toast.error('Failed to copy');
     }
   };
 
@@ -694,7 +690,7 @@ function EmbedPageContent() {
                       type="text"
                       value={candleUpColor}
                       onChange={(e) => setCandleUpColor(e.target.value)}
-                      placeholder="#18C722"
+                      placeholder="#0ECB81"
                       className={`flex-1 px-3 sm:px-4 py-2.5 sm:py-3 bg-bgContainer border rounded-md text-textPrimary text-xs sm:text-sm focus:outline-none focus:ring-2 font-menlo placeholder:text-textSecondary ${
                         isValidHexColor(candleUpColor)
                           ? 'border-borderDefault focus:ring-success focus:border-success'
@@ -703,13 +699,13 @@ function EmbedPageContent() {
                     />
                     <input
                       type="color"
-                      value={candleUpColor || '#18C722'}
+                      value={candleUpColor || '#0ECB81'}
                       onChange={(e) => setCandleUpColor(e.target.value)}
                       className="w-10 h-10 sm:w-12 sm:h-12 rounded cursor-pointer border border-borderDefault flex-shrink-0"
                     />
                     <div
                       className="w-10 h-10 sm:w-12 sm:h-12 rounded border border-borderDefault flex-shrink-0"
-                      style={{ backgroundColor: candleUpColor || '#18C722' }}
+                      style={{ backgroundColor: candleUpColor || '#0ECB81' }}
                     />
                   </div>
                 </div>
@@ -909,8 +905,8 @@ function EmbedPageContent() {
             <div className="bg-bgOverlay border border-borderDefault rounded-lg p-4 sm:p-6">
               <h3 className="text-xs sm:text-sm font-semibold text-textPrimary mb-2">Notes</h3>
               <p className="text-xs sm:text-sm text-textSecondary leading-relaxed">
-                You can use charts for multiple tokens by replacing the Mobula URL with your pool or token address.
-                More embed options are available in Mobula by clicking &quot;Share&quot; then &quot;Embed Charts&quot;.
+                You can use charts for multiple tokens by replacing the Hawk URL with your pool or token address.
+                More embed options are available in Hawk by clicking &quot;Share&quot; then &quot;Embed Charts&quot;.
               </p>
             </div>
           </div>

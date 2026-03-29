@@ -31,18 +31,6 @@ export function useXTrackerData() {
     const load = async () => {
       setLoading(true);
       try {
-        const usernames = await getTrackedUsers();
-
-        // Add any users from API that aren't in local store
-        for (const username of usernames) {
-          const exists = trackedUsers.some(
-            (u) => u.username.toLowerCase() === username.toLowerCase(),
-          );
-          if (!exists) {
-            addTrackedUser(username, null);
-          }
-        }
-
         // Enrich users missing profile data, staggered to respect rate limits
         const currentUsers = useXTrackerStore.getState().trackedUsers;
         const needsProfile = currentUsers.filter((u) => !u.profile);

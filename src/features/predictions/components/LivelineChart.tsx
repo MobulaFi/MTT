@@ -2,7 +2,11 @@
 
 import { useMemo, useCallback, useEffect, useRef, useState } from 'react';
 import { Liveline } from 'liveline';
-import type { WindowOption } from 'liveline';
+
+interface WindowOption {
+  label: string;
+  secs: number;
+}
 import { useThemeStore } from '@/store/useThemeStore';
 
 interface OHLCVCandle {
@@ -146,7 +150,7 @@ export function LivelineChart({ candles, latestPrice, trades = [], activeSecs, o
     const spawned: FloatingLabel[] = newTrades.map((t, i) => ({
       id: t.tradeId,
       text: `${t.side === 'buy' ? '+' : '-'} ${formatUSD(t.amountUSD)}`,
-      color: t.side === 'buy' ? successColor : '#F45B5B',
+      color: t.side === 'buy' ? successColor : '#EA3943',
       startTime: now + i * 80, // stagger bursts by 80ms each
     }));
 

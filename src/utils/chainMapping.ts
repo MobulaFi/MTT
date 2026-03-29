@@ -175,3 +175,10 @@ export function getChainFromBlockchain(blockchain: string): Chain | null {
 export function getChainConfig(blockchain: string): ChainConfig | null {
   return CHAIN_CONFIGS[blockchain] || null;
 }
+
+export function getExplorerTxUrl(chainId: string, txHash: string): string {
+  if (chainId.toLowerCase().includes('solana')) return `https://solscan.io/tx/${txHash}`;
+  const cfg = CHAIN_CONFIGS[chainId];
+  if (cfg?.blockExplorerUrls?.[0]) return `${cfg.blockExplorerUrls[0]}/tx/${txHash}`;
+  return `https://etherscan.io/tx/${txHash}`;
+}

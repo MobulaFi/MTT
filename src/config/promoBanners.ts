@@ -14,7 +14,7 @@ export type PromoBanner = {
   enabled?: boolean;
 };
 
-// Default banners - Mobula changelog & features
+// Default banners - Hawk changelog & features
 export const PROMO_BANNERS: PromoBanner[] = [
   {
     id: 'perps-engine',
@@ -38,7 +38,7 @@ export const PROMO_BANNERS: PromoBanner[] = [
   },
   {
     id: 'api',
-    title: 'Mobula API',
+    title: 'Hawk Pro',
     subtitle: 'Real-Time Data',
     description: 'Live prices, volumes & market data for 1M+ tokens across 80+ chains.',
     image: '/banners/mobula-api.png',

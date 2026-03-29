@@ -53,9 +53,9 @@ const ALLOWED_CHART_TYPES: EmbedChartType[] = ['price', 'mc', 'volume'];
 const ALLOWED_THEMES: EmbedTheme[] = ['Navy', 'Frog', 'Abyss', 'Light'];
 
 const THEME_COLORS: Record<EmbedTheme, string> = {
-  Navy: '#121319',
-  Frog: '#0F1010',
-  Abyss: '#070D13',
+  Navy: '#0A0A0A',
+  Frog: '#0C0C0C',
+  Abyss: '#050505',
   Light: '#FFFFFF',
 };
 

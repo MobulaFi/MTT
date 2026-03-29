@@ -1,10 +1,97 @@
 //datafeed.tsx
+
+declare global {
+  interface Window {
+    __tvPaginationLocked?: boolean;
+  }
+}
+
 import { sdk, streams } from '@/lib/sdkClient';
 import { formatPureNumber } from '@mobula_labs/sdk';
 import type { MarketOHLCVHistoryParams, TokenOHLCVHistoryParams } from '@mobula_labs/types';
 import type { Bar, LibrarySymbolInfo, ResolutionString, HistoryCallback, ErrorCallback, PeriodParams } from '../../../public/static/charting_library/datafeed-api';
 
-export const supportedResolutions = ['1s', '5s', '15s', '30s', '1', '5', '15', '30', '60', '240', '1D', '1W', '1M'];
+export const supportedResolutions: ResolutionString[] = [
+  '1S' as ResolutionString,
+  '5S' as ResolutionString,
+  '15S' as ResolutionString,
+  '30S' as ResolutionString,
+  '1' as ResolutionString,
+  '5' as ResolutionString,
+  '15' as ResolutionString,
+  '30' as ResolutionString,
+  '60' as ResolutionString,
+  '240' as ResolutionString,
+  '1D' as ResolutionString,
+  '1W' as ResolutionString,
+  '1M' as ResolutionString,
+];
+
+const RETRY_COUNT = 3;
+const RETRY_INTERVAL_MS = 50;
+const FETCH_TIMEOUT_MS = 8_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('OHLCV fetch timeout')), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+async function fetchWithRetry<T>(fn: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < RETRY_COUNT; attempt++) {
+    try {
+      return await withTimeout(fn(), FETCH_TIMEOUT_MS);
+    } catch (err: unknown) {
+      lastError = err;
+      if (attempt < RETRY_COUNT - 1) {
+        await new Promise((r) => setTimeout(r, RETRY_INTERVAL_MS));
+      }
+    }
+  }
+  throw lastError;
+}
+
+/** Start OHLCV fetch immediately — call this BEFORE awaiting TradingView library.
+ *  Pass the returned promise to Datafeed({ prefetchPromise }) so getBars uses it. */
+export const prefetchOhlcv = (params: {
+  isPair: boolean;
+  address: string;
+  chainId: string;
+  period: string;
+  isUsd: boolean;
+}): Promise<unknown[]> => {
+  const { isPair, address, chainId, period, isUsd } = params;
+  const amount = getPrefetchAmount(period);
+  if (isPair) {
+    return fetchWithRetry(() =>
+      sdk.fetchMarketOHLCVHistory({
+        address,
+        chainId,
+        from: 0,
+        to: Date.now(),
+        amount,
+        usd: isUsd,
+        period,
+      } satisfies MarketOHLCVHistoryParams).then((res) => (res as { data?: unknown[] })?.data || []),
+    );
+  }
+  return fetchWithRetry(() =>
+    sdk.fetchTokenOHLCVHistory({
+      address,
+      chainId,
+      from: 0,
+      to: Date.now(),
+      amount,
+      usd: isUsd,
+      period,
+    } satisfies TokenOHLCVHistoryParams).then((res) => (res as { data?: unknown[] })?.data || []),
+  );
+};
 
 const lastBarsCache = new Map<string, unknown>();
 type StreamSubscription = { unsubscribe: () => void };
@@ -12,9 +99,66 @@ const activeSubscriptions = new Map<string, { subscription: StreamSubscription; 
 const pendingRequests = new Map<string, Promise<any[]>>();
 const marksCache = new Map<string, Map<string, ChartMark>>();
 
+// Track consecutive empty getBars responses per asset+resolution.
+// After EMPTY_THRESHOLD consecutive empties, stop requesting older data
+// to prevent infinite pagination on tokens with no/sparse trades.
+const consecutiveEmptyBars = new Map<string, number>();
+const EMPTY_THRESHOLD = 3;
+
+// Shared bar type used by both local and persistent caches
+type CachedBar = { time: number; open: number; high: number; low: number; close: number; volume: number };
+
+// Module-level persistent bar cache — survives Datafeed resets and SPA navigations.
+// Prevents re-fetching the same paginated history on every page visit.
+const persistentBarCache = new Map<string, CachedBar[]>();
+const PERSISTENT_CACHE_MAX_BARS = 6000;
+const PERSISTENT_CACHE_MAX_KEYS = 30;
+
+function upsertPersistentCache(key: string, bars: CachedBar[]): void {
+  if (bars.length === 0) return;
+  const existing = persistentBarCache.get(key) ?? [];
+  const barMap = new Map<number, CachedBar>();
+  for (const bar of existing) barMap.set(bar.time, bar);
+  for (const bar of bars) barMap.set(bar.time, bar);
+  const sorted = Array.from(barMap.values()).sort((a, b) => a.time - b.time);
+  const trimmed = sorted.length > PERSISTENT_CACHE_MAX_BARS
+    ? sorted.slice(sorted.length - PERSISTENT_CACHE_MAX_BARS)
+    : sorted;
+  if (!persistentBarCache.has(key) && persistentBarCache.size >= PERSISTENT_CACHE_MAX_KEYS) {
+    const oldest = persistentBarCache.keys().next().value;
+    if (oldest !== undefined) persistentBarCache.delete(oldest);
+  }
+  persistentBarCache.set(key, trimmed);
+}
+
 const getMarksCacheKey = (address: string | undefined, chainId: string) => `${address}-${chainId}`;
 
+export function getPrefetchAmount(_period: string): number {
+  return 500;
+}
+
 export type ChartMetricMode = 'price' | 'marketcap';
+export type ChartDebugReason =
+  | 'initial_load'
+  | 'token_switch'
+  | 'timeframe_change'
+  | 'metric_change'
+  | 'currency_change'
+  | 'retry'
+  | 'scroll_pagination'
+  | 'stream_bootstrap'
+  | 'warmup_pre_mount'
+  | 'unknown';
+
+export interface ChartDebugContext {
+  chartSessionId?: string;
+  initAttemptId?: string;
+  symbolRequestId?: string;
+  assetKey?: string;
+  previousAssetKey?: string | null;
+  previousResolution?: string | null;
+  reason?: ChartDebugReason;
+}
 
 export interface ChartMarkCustomColor {
   color: string;
@@ -33,7 +177,7 @@ export interface ChartMark {
 
 const clearCacheForMetric = (assetId: string | undefined, metric: ChartMetricMode) => {
   const keysToDelete: string[] = [];
-  
+
   lastBarsCache.forEach((_, key) => {
     if (key.includes(`${assetId}-`) && key.includes(`-${metric}`)) {
       keysToDelete.push(key);
@@ -49,6 +193,24 @@ const clearCacheForMetric = (assetId: string | undefined, metric: ChartMetricMod
   });
 
   requestKeysToDelete.forEach(key => pendingRequests.delete(key));
+
+  // Reset empty counters so pagination restarts for the new context
+  const emptyKeysToDelete: string[] = [];
+  consecutiveEmptyBars.forEach((_, key) => {
+    if (key.startsWith(`${assetId}-`)) {
+      emptyKeysToDelete.push(key);
+    }
+  });
+  emptyKeysToDelete.forEach(key => consecutiveEmptyBars.delete(key));
+
+  // Clear persistent bar cache for this asset+metric so stale data is not served
+  const persistentKeysToDelete: string[] = [];
+  persistentBarCache.forEach((_, key) => {
+    if (key.includes(`${assetId}-`) && key.includes(`-${metric}`)) {
+      persistentKeysToDelete.push(key);
+    }
+  });
+  persistentKeysToDelete.forEach(key => persistentBarCache.delete(key));
 };
 
 interface ChartSettings {
@@ -58,51 +220,35 @@ interface ChartSettings {
   scaleDivisor: number;
 }
 
-const normalizeResolution = (resolution: string): string => {
+import { normalizeResolution } from '@/utils/normalizeResolution';
+export { normalizeResolution };
+
+export interface FirstDataPayload {
+  firstBarTime: number;
+  lastBarTime: number;
+  barsCount: number;
+  resolution: string;
+}
+
+export const getResolutionMs = (resolution: string): number => {
   switch (resolution) {
-    case '1S':
-    case '1s':
-      return '1s';
-    case '5S':
-    case '5s':
-      return '5s';
-    case '15S':
-    case '15s':
-      return '15s';
-    case '30S':
-    case '30s':
-      return '30s';
-    case '1':
-    case '1m':
-      return '1m';
-    case '5':
-    case '5m':
-      return '5m';
-    case '15':
-    case '15m':
-      return '15m';
-    case '30':
-    case '30m':
-      return '30m';
-    case '60':
-    case '1h':
-      return '1h';
-    case '240':
-    case '4h':
-      return '4h';
-    case '1D':
-    case '1d':
-      return '1d';
-    case '1W':
-    case '1w':
-      return '1w';
-    case '1M':
-    case '1month':
-      return '1M';
-    default:
-      return resolution;
+    case '1s': return 1_000;
+    case '5s': return 5_000;
+    case '15s': return 15_000;
+    case '30s': return 30_000;
+    case '1m': return 60_000;
+    case '5m': return 5 * 60_000;
+    case '15m': return 15 * 60_000;
+    case '30m': return 30 * 60_000;
+    case '1h': return 60 * 60_000;
+    case '4h': return 4 * 60 * 60_000;
+    case '1d': return 24 * 60 * 60_000;
+    case '1w': return 7 * 24 * 60 * 60_000;
+    case '1M': return 30 * 24 * 60 * 60_000;
+    default: return 60_000;
   }
 };
+
 
 type BaseAsset = {
   asset?: string;
@@ -140,26 +286,31 @@ const buildRequestKey = (
 
 // Transform OHLCV data from API format (v, o, h, l, c, t) to TradingView format (time, open, high, low, close, volume)
 const transformOHLCVBar = (bar: { v?: number; o?: number; h?: number; l?: number; c?: number; t?: number; time?: number; open?: number; high?: number; low?: number; close?: number; volume?: number }): Bar => {
+  const toNumber = (value: number | string | undefined): number => {
+    const parsed = typeof value === 'string' ? Number(value) : (value ?? Number.NaN);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
   // If already in TradingView format, return as is
   if (bar.time !== undefined && (bar.volume !== undefined || bar.v === undefined)) {
     return {
-      time: bar.time,
-      open: bar.open ?? 0,
-      high: bar.high ?? 0,
-      low: bar.low ?? 0,
-      close: bar.close ?? 0,
-      volume: bar.volume ?? bar.v ?? 0,
+      time: toNumber(bar.time),
+      open: toNumber(bar.open),
+      high: toNumber(bar.high),
+      low: toNumber(bar.low),
+      close: toNumber(bar.close),
+      volume: toNumber(bar.volume ?? bar.v),
     };
   }
   
   // Transform from API format (v, o, h, l, c, t) to TradingView format
   return {
-    time: bar.t ?? bar.time ?? 0,
-    open: bar.o ?? bar.open ?? 0,
-    high: bar.h ?? bar.high ?? 0,
-    low: bar.l ?? bar.low ?? 0,
-    close: bar.c ?? bar.close ?? 0,
-    volume: bar.v ?? bar.volume ?? 0,
+    time: toNumber(bar.t ?? bar.time),
+    open: toNumber(bar.o ?? bar.open),
+    high: toNumber(bar.h ?? bar.high),
+    low: toNumber(bar.l ?? bar.low),
+    close: toNumber(bar.c ?? bar.close),
+    volume: toNumber(bar.v ?? bar.volume),
   };
 };
 
@@ -192,13 +343,29 @@ const applyMetricToBar = (bar: any, settings: ChartSettings): Bar => {
   return mcBar;
 };
 
-const applyMetricToBars = (bars: any[], settings: ChartSettings) => bars.map((bar) => applyMetricToBar(bar, settings));
+const applyMetricToBars = (bars: any[], settings: ChartSettings) =>
+  bars
+    .map((bar) => applyMetricToBar(bar, settings))
+    .filter((bar) =>
+      Number.isFinite(bar.time) &&
+      Number.isFinite(bar.open) &&
+      Number.isFinite(bar.high) &&
+      Number.isFinite(bar.low) &&
+      Number.isFinite(bar.close) &&
+      bar.time > 0,
+    )
+    .sort((a, b) => a.time - b.time);
 
 interface DatafeedOptions {
   isUsd?: boolean;
   metricMode?: ChartMetricMode;
   deployer?: string;
   userAddress?: string;
+  onFirstData?: (payload: FirstDataPayload) => void;
+  prefetchPromise?: Promise<unknown[]> | null;
+  getDebugContext?: () => ChartDebugContext;
+  /** When true, getBars returns empty data immediately without API calls (used for pre-mount warmup) */
+  warmup?: boolean;
 }
 
 export const Datafeed = (
@@ -221,14 +388,89 @@ export const Datafeed = (
     } satisfies ChartSettings,
   };
 
+  let firstDataFired = false;
+  let onFirstData = options.onFirstData;
+  let prefetchPromise: Promise<unknown[]> | null = options.prefetchPromise ?? null;
+
+  let localBarCache: CachedBar[] = [];
+  let localBarCacheKey = '';
+  let isWarmup = !!options.warmup;
+  // Generation counter: incremented on resetFirstData / token switch.
+  // Cache mutations check this to discard stale work.
+  let cacheGeneration = 0;
+  // Amount constants: initial load gets 500 bars, scroll pagination gets 300.
+  const INITIAL_AMOUNT = 500;
+  const PAGINATION_AMOUNT = 300;
+  // Track in-flight firstDataRequest to deduplicate concurrent calls.
+  // TV's _ensureRequestedTo bypasses the pagination lock when cache is empty,
+  // causing a second getBars(firstDataRequest) before the first resolves.
+  let pendingFirstDataResult: { key: string; promise: Promise<Bar[]> } | null = null;
+
+  const emitDebug = (level: string, event: string, payload?: Record<string, unknown>) => {
+    if (level === 'error') console.error('[datafeed]', event, payload);
+    else if (level === 'warn') console.warn('[datafeed]', event, payload);
+  };
+
+
   const updateSupply = (supply?: number) => {
     settingsRef.current.circulatingSupply = supply ?? 0;
   };
 
   return {
     updateBaseAsset: (newAsset: BaseAsset) => {
+      const previousAsset = baseAssetRef.current;
       baseAssetRef.update(newAsset);
       updateSupply(newAsset.circulatingSupply);
+    },
+
+    /** Reset so onFirstData fires again on next getBars (used on SPA navigation) */
+    resetFirstData: () => {
+      firstDataFired = false;
+      localBarCache = [];
+      localBarCacheKey = '';
+      cacheGeneration++;
+      window.__tvPaginationLocked = true;
+      pendingFirstDataResult = null;
+      pendingRequests.clear();
+      consecutiveEmptyBars.clear();
+      // Clear all persistent bar caches to force fresh fetches.
+      persistentBarCache.clear();
+      // Clear lastBarsCache to prevent stale bridge bars in subscribeBars
+      // when switching tokens (old last bar would create bridge to new stream).
+      lastBarsCache.clear();
+      // Unsubscribe all active stream subscriptions so old token's
+      // candles don't leak into the new chart during the transition.
+      activeSubscriptions.forEach((sub) => {
+        try { sub.subscription.unsubscribe(); } catch { /* noop */ }
+      });
+      activeSubscriptions.clear();
+    },
+
+    unlockPagination: () => {
+      window.__tvPaginationLocked = false;
+    },
+
+    createGuardedUnlock: () => {
+      let called = false;
+      return () => {
+        if (called) return;
+        called = true;
+        window.__tvPaginationLocked = false;
+      };
+    },
+
+    /** Update the onFirstData callback (needed when widget is reused across navigations) */
+    setOnFirstData: (cb: ((payload: FirstDataPayload) => void) | undefined) => {
+      onFirstData = cb;
+    },
+
+    setDebugContext: (_nextGetDebugContext: (() => ChartDebugContext) | undefined) => {
+      // no-op: debug logging removed for performance
+    },
+
+    /** Set a new prefetch promise for the next getBars call */
+    setPrefetchPromise: (p: Promise<unknown[]> | null) => {
+      prefetchPromise = p;
     },
 
     setCurrencyMode: (nextIsUsd: boolean) => {
@@ -236,6 +478,9 @@ export const Datafeed = (
     },
 
     setMetricMode: (mode: ChartMetricMode) => {
+      const previousMode = settingsRef.current.metric;
+      if (previousMode === mode) return;
+
       const current = baseAssetRef.current;
       const assetId = current.isPair ? current.address : current.asset;
       settingsRef.current.metric = mode;
@@ -247,8 +492,10 @@ export const Datafeed = (
         }
       });
       keysToDelete.forEach(key => lastBarsCache.delete(key));
-      
-      // Unsubscribe from all active subscriptions
+
+      // Only unsubscribe when the metric actually changed — the subscription
+      // key embeds the metric mode, so TradingView will call subscribeBars again
+      // with the new key, which creates a fresh subscription.
       activeSubscriptions.forEach((sub, uid) => {
         try {
           sub.subscription.unsubscribe();
@@ -260,9 +507,9 @@ export const Datafeed = (
     setCirculatingSupply: updateSupply,
 
     onReady: (cb: (config: any) => void) => {
-      console.log('[Datafeed Debug] onReady called');
-      setTimeout(() => {
-        console.log('[Datafeed Debug] onReady callback executing');
+
+      queueMicrotask(() => {
+
         cb({
           supported_resolutions: supportedResolutions,
           supports_search: false,
@@ -271,7 +518,7 @@ export const Datafeed = (
           supports_timescale_marks: false,
           supports_time: true,
         });
-      }, 0);
+      });
     },
 
     searchSymbols: (
@@ -284,12 +531,13 @@ export const Datafeed = (
     },
 
     resolveSymbol: (symbolName: string, onResolve: (info: any) => void) => {
-      console.log('[Datafeed Debug] resolveSymbol called:', symbolName);
-      setTimeout(() => {
+      queueMicrotask(() => {
         const price = baseAssetRef.current.priceUSD ?? 1;
         const supply = settingsRef.current.circulatingSupply;
         const metric = settingsRef.current.metric;
         let cleanSymbolName = symbolName.split('?')[0];
+        // Strip address suffix (e.g., ":31ubth4H") added for uniqueness
+        cleanSymbolName = cleanSymbolName.replace(/[~:][a-zA-Z0-9]+$/, '');
         cleanSymbolName = cleanSymbolName.replace(/_(MCAP|PRICE)_\d+$/, '');
         if (cleanSymbolName.endsWith('_MCAP') || cleanSymbolName.endsWith('_PRICE')) {
           cleanSymbolName = cleanSymbolName.replace(/_(MCAP|PRICE)$/, '');
@@ -320,6 +568,10 @@ export const Datafeed = (
           settingsRef.current.scaleDivisor = 1;
         }
 
+        if (!Number.isFinite(pricescale) || pricescale <= 0 || !cleanSymbolName) {
+          // invalid pricescale — fallback will be applied
+        }
+
         const displayName = metric === 'marketcap'
           ? `${cleanSymbolName} MC`
           : cleanSymbolName;
@@ -343,12 +595,18 @@ export const Datafeed = (
           intraday_multipliers: ['1', '5', '15', '30', '60', '240'],
           seconds_multipliers: ['1', '5', '15', '30'],
           daily_multipliers: ['1'],
-          supported_resolution: supportedResolutions,
+          supported_resolutions: supportedResolutions,
           volume_precision: 2,
           data_status: 'streaming',
         };
         onResolve(info);
-      }, 0);
+      });
+    },
+
+    /** Disable warmup mode — subsequent getBars will make real API calls */
+    setWarmup: (v: boolean) => {
+      isWarmup = v;
+      // warmup state changed
     },
 
     getBars: (
@@ -358,7 +616,20 @@ export const Datafeed = (
       onResult: HistoryCallback,
       onError: ErrorCallback,
     ) => {
-      console.log('[Datafeed Debug] getBars called', { resolution, periodParams });
+      // CRITICAL: Never call onResult synchronously from getBars.
+      // TradingView's internal flow is: getBars → onResult → _processBars →
+      // _processPendingSubscribers → _ensureRequestedTo → getBars (re-entry).
+      // Synchronous onResult creates an infinite call stack that freezes the UI.
+      // setTimeout(0) breaks the synchronous chain by deferring to the next task.
+      const deferOnResult: HistoryCallback = (bars, meta) => {
+        setTimeout(() => onResult(bars, meta), 0);
+      };
+
+      // Warmup mode: return empty data immediately, no API calls
+      if (isWarmup) {
+        deferOnResult([], { noData: true });
+        return;
+      }
       const current = baseAssetRef.current;
       const assetId = current.isPair ? current.address : current.asset;
       const normalizedResolution = normalizeResolution(resolution);
@@ -369,89 +640,309 @@ export const Datafeed = (
       const fromMs = periodParams.from * 1000;
       const toMs = periodParams.to * 1000;
 
-      console.log('[Datafeed Debug] Fetching data for:', { assetId, isPair: current.isPair, chainId: current.chainId });
+      const emptyKey = `${assetId}-${normalizedResolution}`;
+      const startedAt = Date.now();
+
+      emitDebug('info', 'get_bars_start', {
+        resolutionNormalized: normalizedResolution,
+        firstDataRequest: periodParams.firstDataRequest,
+        toMs,
+      });
 
       try {
-        if (pendingRequests.has(requestKey) && settingsSnapshot.metric === 'price') {
-          pendingRequests.get(requestKey)!.then((cachedBars) => {
-            onResult(cachedBars, { noData: !cachedBars.length });
-          }).catch((err) => {
-            console.error('[Datafeed Debug] Error in cached request:', err);
-            onError('Failed to fetch cached bars');
-          });
+        if (periodParams.firstDataRequest) {
+          consecutiveEmptyBars.delete(emptyKey);
+        }
+
+        // NOTE: No localBarCache shortcut for firstDataRequest.
+        // TV's "full update" (after incremental failure) re-calls getBars with
+        // firstDataRequest=true. localBarCache misses subscription bars that TV
+        // already has in its internal cache → _putToCache detects partial overlap
+        // (our newest bar < TV cache's newest bar) → clears TV cache → blank chart.
+        // Always fetch fresh data from API for firstDataRequest.
+
+        if ((consecutiveEmptyBars.get(emptyKey) ?? 0) >= EMPTY_THRESHOLD) {
+          deferOnResult([], { noData: true });
           return;
         }
+
+        if (!periodParams.firstDataRequest && localBarCacheKey === cacheKey && localBarCache.length > 0) {
+          // Strict < toMs: TV's `to` = oldest cached bar time. Returning bars
+          // at exactly `to` would overlap with cache[0] → _putToCache fail.
+          const cachedSlice = localBarCache.filter(
+            (b) => b.time < toMs,
+          );
+          if (cachedSlice.length > 0) {
+            deferOnResult(cachedSlice, { noData: false });
+            return;
+          }
+          if (toMs <= localBarCache[0].time) {
+            const persisted = persistentBarCache.get(cacheKey);
+            if (persisted && persisted.length > 0) {
+              const persistedSlice = persisted.filter((b) => b.time < toMs);
+              if (persistedSlice.length > 0) {
+                localBarCache = [...persistedSlice, ...localBarCache];
+                deferOnResult(persistedSlice, { noData: false });
+                return;
+              }
+            }
+          }
+        }
+
+        // NOTE: pendingRequests dedup removed — returning stale data from a
+        // concurrent request causes _putToCache overlap when the stream has
+        // modified TV's cache between callbacks → "Incremental update failed" loop.
 
         if (settingsSnapshot.metric === 'marketcap') {
           pendingRequests.delete(requestKey);
           lastBarsCache.delete(cacheKey);
         }
 
-        // Use new v2 endpoints
-        let rawPromise: Promise<unknown[]>;
-        
-        if (current.isPair) {
-          // Use market-ohlcv-history for pairs (by pool address)
-          const requestParams: MarketOHLCVHistoryParams = {
-            address: current.address!,
-            chainId: current.chainId,
-            from: fromMs,
-            to: toMs,
-            amount: periodParams.countBack,
-            usd: settingsSnapshot.isUsd,
-            period: normalizedResolution,
-          };
-          
-          console.log('[Datafeed Debug] Fetching market OHLCV history with params:', requestParams);
-          rawPromise = sdk.fetchMarketOHLCVHistory(requestParams).then((res) => (res as { data?: unknown[] })?.data || []);
+
+        const fetchOhlcv = (fetchFrom: number, fetchTo: number, amount: number): Promise<unknown[]> => {
+          if (current.isPair) {
+            return fetchWithRetry(() =>
+              sdk.fetchMarketOHLCVHistory({
+                address: current.address!,
+                chainId: current.chainId,
+                from: fetchFrom,
+                to: fetchTo,
+                amount,
+                usd: settingsSnapshot.isUsd,
+                period: normalizedResolution,
+              } satisfies MarketOHLCVHistoryParams).then((res) => (res as { data?: unknown[] })?.data || []),
+            );
+          }
+          return fetchWithRetry(() =>
+            sdk.fetchTokenOHLCVHistory({
+              address: current.asset!,
+              chainId: current.chainId,
+              from: fetchFrom,
+              to: fetchTo,
+              amount,
+              usd: settingsSnapshot.isUsd,
+              period: normalizedResolution,
+            } satisfies TokenOHLCVHistoryParams).then((res) => (res as { data?: unknown[] })?.data || []),
+          );
+        };
+
+        let fetchTo: number;
+        let amount: number;
+
+        if (periodParams.firstDataRequest) {
+          fetchTo = toMs;
+          amount = INITIAL_AMOUNT;
         } else {
-          // Use token-ohlcv-history for assets (by token address)
-          const requestParams: TokenOHLCVHistoryParams = {
-            address: current.asset!,
-            chainId: current.chainId,
-            from: fromMs,
-            to: toMs,
-            amount: periodParams.countBack,
-            usd: settingsSnapshot.isUsd,
-            period: normalizedResolution,
-          };
-          
-          console.log('[Datafeed Debug] Fetching token OHLCV history with params:', requestParams);
-          rawPromise = sdk.fetchTokenOHLCVHistory(requestParams).then((res) => (res as { data?: unknown[] })?.data || []);
+          fetchTo = toMs;
+          amount = PAGINATION_AMOUNT;
         }
-        
-        const processedPromise = rawPromise.then((bars) => applyMetricToBars(bars, settingsSnapshot));
 
-        pendingRequests.set(requestKey, processedPromise);
+        const fetchGeneration = cacheGeneration;
 
-        Promise.all([rawPromise, processedPromise])
-          .then(([rawBars, processedBars]) => {
-            console.log('[Datafeed Debug] Got bars:', { count: processedBars.length, hasData: processedBars.length > 0 });
-            onResult(processedBars, { noData: !processedBars.length });
+        let rawPromise: Promise<unknown[]>;
+        if (periodParams.firstDataRequest && prefetchPromise) {
+          rawPromise = prefetchPromise;
+          prefetchPromise = null;
+        } else if (periodParams.firstDataRequest && pendingFirstDataResult?.key === cacheKey) {
+          // TV's _ensureRequestedTo fires a second getBars(firstDataRequest)
+          // while the first is still in-flight (cache empty → lock bypassed).
+          // Reuse the same result promise to avoid a duplicate API call.
+          const pendingResult = pendingFirstDataResult.promise;
+          pendingResult.then((bars) => {
+            if (fetchGeneration !== cacheGeneration) {
+              deferOnResult([], { noData: true });
+              return;
+            }
+            deferOnResult(bars, { noData: bars.length === 0 });
+          }).catch(() => {
+            deferOnResult([], { noData: true });
+          });
+          return;
+        } else {
+          rawPromise = fetchOhlcv(0, fetchTo, amount);
+        }
 
-            if (rawBars.length > 0) {
-              // Transform the last bar to TradingView format before caching
-              const lastRawBar = rawBars[rawBars.length - 1] as Record<string, unknown>;
-              const lastBar = transformOHLCVBar(lastRawBar);
-              const cachedBar = lastBarsCache.get(cacheKey) as Record<string, unknown> | undefined;
+        // Single promise chain: process → onResult → cache (no redundant Promise.all)
+        const isFirstFetch = periodParams.firstDataRequest;
+        const resultPromise = rawPromise.then((rawBars) => {
+          // Stale response from previous token — discard and notify TV
+          // so it doesn't stay stuck with _requesting=true.
+          if (fetchGeneration !== cacheGeneration) {
+            deferOnResult([], { noData: true });
+            return [];
+          }
 
-              if (!cachedBar || (lastBar.time as number) >= (cachedBar.time as number)) {
-                lastBarsCache.set(cacheKey, lastBar);
+          const processedBars = applyMetricToBars(rawBars, settingsSnapshot);
+
+          // Track consecutive empty responses to detect tokens with no data
+          if (processedBars.length === 0) {
+            consecutiveEmptyBars.set(emptyKey, (consecutiveEmptyBars.get(emptyKey) ?? 0) + 1);
+          } else {
+            consecutiveEmptyBars.delete(emptyKey);
+          }
+
+          // ─── Cache update ───
+          const newCachedBars: CachedBar[] = processedBars.map((b) => ({
+            time: b.time as number,
+            open: b.open as number,
+            high: b.high as number,
+            low: b.low as number,
+            close: b.close as number,
+            volume: b.volume as number,
+          }));
+
+          if (isFirstFetch) {
+            localBarCache = newCachedBars;
+            localBarCacheKey = cacheKey;
+          } else if (localBarCacheKey === cacheKey) {
+            // Prepend older bars fetched during backward pagination
+            const existingOldest = localBarCache[0]?.time ?? Infinity;
+            const olderBars = newCachedBars.filter((b) => b.time < existingOldest);
+            if (olderBars.length > 0) {
+              localBarCache = [...olderBars, ...localBarCache];
+            }
+          }
+
+          if (newCachedBars.length > 0) {
+            upsertPersistentCache(cacheKey, newCachedBars);
+          }
+
+          // ─── Build response for TV ───
+          // TV's _putToCache rejects when returned bars overlap with its cache:
+          //   if (e[e.length-1].time >= this._cache.bars[0].time) → clear + fail
+          // For pagination, TV passes `to` = oldest cached bar time (in seconds).
+          // Use strict < toMs to guarantee NO overlap with TV's cache[0].
+          // For firstDataRequest, allow all bars up to now.
+          const clampedBars = processedBars.filter((b) => {
+            const t = typeof b.time === 'number' ? b.time : (b as Bar).time as number;
+            return isFirstFetch ? t <= toMs : t < toMs;
+          });
+
+          // Stitch continuity at pagination join: compare the newest clamped
+          // bar against the oldest existing bar to detect discontinuities.
+          // Only stitch if the gap is within a reasonable range (≤ 3 candle
+          // intervals) — larger gaps represent real sparse data and should
+          // NOT be bridged (that creates fake price movement).
+          if (!isFirstFetch && localBarCacheKey === cacheKey && clampedBars.length > 0) {
+            const newestClamped = clampedBars[clampedBars.length - 1];
+            const existingStart = localBarCache.find(
+              (b) => newestClamped && b.time > (newestClamped.time as number),
+            );
+            if (
+              newestClamped &&
+              existingStart &&
+              (newestClamped.close as number) !== 0 &&
+              (existingStart.open as number) !== 0
+            ) {
+              const resMs = getResolutionMs(normalizedResolution);
+              const gapMs = existingStart.time - (newestClamped.time as number);
+              // Only stitch small gaps — large ones are real data gaps
+              if (gapMs <= resMs * 3) {
+                const nc = newestClamped.close as number;
+                const eo = existingStart.open as number;
+                const relDelta = Math.abs(nc - eo) / Math.max(eo, 1e-12);
+                if (relDelta > 0.001) {
+                  existingStart.open = nc;
+                  existingStart.high = Math.max(nc, existingStart.high);
+                  existingStart.low = Math.min(nc, existingStart.low);
+                  const stitchBar: Bar = {
+                    time: existingStart.time,
+                    open: existingStart.open,
+                    high: existingStart.high,
+                    low: existingStart.low,
+                    close: existingStart.close,
+                    volume: existingStart.volume,
+                  } as Bar;
+                  clampedBars.push(stitchBar);
+                  upsertPersistentCache(cacheKey, [{
+                    time: stitchBar.time as number,
+                    open: stitchBar.open as number,
+                    high: stitchBar.high as number,
+                    low: stitchBar.low as number,
+                    close: stitchBar.close as number,
+                    volume: stitchBar.volume as number,
+                  }]);
+                }
               }
             }
+          }
 
-            setTimeout(() => {
-              pendingRequests.delete(requestKey);
-            }, 200);
-          })
-          .catch((err) => {
-            console.error('[Datafeed Debug] Error fetching bars:', err);
-            onError(err instanceof Error ? err.message : 'Failed to fetch bars');
-            pendingRequests.delete(requestKey);
+          deferOnResult(clampedBars as Bar[], { noData: clampedBars.length === 0 });
+
+          if (!firstDataFired && processedBars.length > 0) {
+            firstDataFired = true;
+            const firstDataPayload = {
+              firstBarTime: processedBars[0]?.time ?? 0,
+              lastBarTime: processedBars[processedBars.length - 1]?.time ?? 0,
+              barsCount: processedBars.length,
+              resolution: normalizedResolution,
+            };
+            queueMicrotask(() => {
+              onFirstData?.(firstDataPayload);
+            });
+          }
+
+          // Safety: if first fetch returned empty, unlock pagination
+          // so TV isn't permanently blocked (onFirstData won't fire for empty data)
+          if (isFirstFetch && !firstDataFired) {
+            window.__tvPaginationLocked = false;
+          }
+
+          if (rawBars.length > 0) {
+            const lastRawBar = rawBars[rawBars.length - 1] as Record<string, unknown>;
+            const lastBar = transformOHLCVBar(lastRawBar);
+            const cachedBar = lastBarsCache.get(cacheKey) as Record<string, unknown> | undefined;
+
+            if (!cachedBar || (lastBar.time as number) >= (cachedBar.time as number)) {
+              lastBarsCache.set(cacheKey, lastBar);
+            }
+          }
+
+          setTimeout(() => pendingRequests.delete(requestKey), 200);
+          return processedBars;
+        });
+
+        pendingRequests.set(requestKey, resultPromise);
+
+        // Track firstDataRequest so concurrent duplicate calls can reuse it
+        if (isFirstFetch) {
+          pendingFirstDataResult = { key: cacheKey, promise: resultPromise };
+          resultPromise.finally(() => {
+            if (pendingFirstDataResult?.promise === resultPromise) {
+              pendingFirstDataResult = null;
+            }
           });
+        }
+
+        resultPromise.catch((err) => {
+          // Stale error from previous token — still notify TV to unblock thread
+          if (fetchGeneration !== cacheGeneration) {
+            deferOnResult([], { noData: true });
+            return;
+          }
+
+          emitDebug('error', 'get_bars_error', {
+            requestKey,
+            resolutionNormalized: normalizedResolution,
+            error: err instanceof Error ? err.message : 'Failed to fetch bars',
+          });
+          // Transient errors (timeout, network) should not permanently stop
+          // pagination. Use the empty counter so TradingView retries up to
+          // EMPTY_THRESHOLD times before giving up.
+          consecutiveEmptyBars.set(emptyKey, (consecutiveEmptyBars.get(emptyKey) ?? 0) + 1);
+          const errorCount = consecutiveEmptyBars.get(emptyKey) ?? 0;
+          deferOnResult([], { noData: errorCount >= EMPTY_THRESHOLD });
+          pendingRequests.delete(requestKey);
+        });
       } catch (err) {
-        console.error('[Datafeed Debug] Error in getBars:', err);
-        onError(err instanceof Error ? err.message : 'Failed to fetch bars');
+        emitDebug('error', 'get_bars_error', {
+          requestKey,
+          resolutionNormalized: normalizedResolution,
+          error: err instanceof Error ? err.message : 'Failed to fetch bars',
+        });
+        consecutiveEmptyBars.set(emptyKey, (consecutiveEmptyBars.get(emptyKey) ?? 0) + 1);
+        const catchEmptyCount = consecutiveEmptyBars.get(emptyKey) ?? 0;
+        deferOnResult([], { noData: catchEmptyCount >= EMPTY_THRESHOLD });
         pendingRequests.delete(requestKey);
       }
     },
@@ -470,6 +961,10 @@ export const Datafeed = (
       const cacheKey = buildSettingsKey(assetId, normalizedResolution, settingsSnapshot);
       const subscriptionAssetKey = `${cacheKey}-${current.isPair ? 'pair' : 'asset'}`;
 
+      if (isWarmup || assetId === '__warmup__') {
+        return;
+      }
+
       const existing = activeSubscriptions.get(listenerGuid);
       if (existing?.assetKey === subscriptionAssetKey) {
         return;
@@ -480,7 +975,12 @@ export const Datafeed = (
         activeSubscriptions.delete(listenerGuid);
       }
 
+      // Capture generation at subscription time to detect stale callbacks
+      const subscriptionGeneration = cacheGeneration;
+
       const emitProcessedCandle = (rawCandle: Bar | Record<string, unknown>) => {
+        // Discard candles from a stale subscription (token switched since subscribe)
+        if (subscriptionGeneration !== cacheGeneration) return;
         const currentSettings: ChartSettings = { ...settingsRef.current };
         const processed = applyMetricToBar({ ...rawCandle }, currentSettings);
         onTick(processed);
@@ -489,7 +989,6 @@ export const Datafeed = (
         lastBarsCache.set(currentCacheKey, rawCandle as Record<string, unknown>);
       };
 
-      let lastBar = lastBarsCache.get(cacheKey) as Bar | Record<string, unknown> | undefined;
       let firstCandleReceived = false;
 
       try {
@@ -508,24 +1007,45 @@ export const Datafeed = (
         }
 
         const subscription = streams.subscribeOhlcv(subscribeParams, (candle: unknown) => {
+          // Discard if token switched since this subscription was created
+          if (subscriptionGeneration !== cacheGeneration) return;
+
           // Transform candle data to ensure it has the correct format with volume
           const rawCandle = candle as Record<string, unknown>;
           const candleData = transformOHLCVBar(rawCandle);
-          
-          if (!candleData.time) return;
+
+          if (!candleData.time) {
+            return;
+          }
+
+          // Skip candles with zero/null prices (e.g., empty initial entry from
+          // backend when no trade data exists in the lookback window).
+          // Emitting price=0 to TradingView would break the Y-axis scale.
+          if (!candleData.close || candleData.close === 0) {
+            return;
+          }
 
           if (!firstCandleReceived) {
             firstCandleReceived = true;
+
+            // Read lastBar from cache NOW (not at subscribe time) to ensure we
+            // have the latest historical bar from getBars, not a stale bar from
+            // a previous token that was cleared by resetFirstData().
+            const lastBar = lastBarsCache.get(cacheKey) as Bar | Record<string, unknown> | undefined;
 
             if (lastBar?.time && lastBar?.close != null) {
               const normalizeTime = (t: number) => t > 10_000_000_000 ? t : t * 1000;
               const lastBarTimeMs = normalizeTime(lastBar.time as number);
               const candleTimeMs = normalizeTime(candleData.time as number);
+              const resolutionMs = getResolutionMs(normalizedResolution);
 
-              if (candleTimeMs > lastBarTimeMs) {
+              // Only bridge if the gap is within a reasonable range (< 3 candles).
+              // Larger gaps indicate sparse data — bridging would create fake candles.
+              if (candleTimeMs > lastBarTimeMs && (candleTimeMs - lastBarTimeMs) <= resolutionMs * 3) {
                 const startPrice = lastBar.close as number;
                 const endPrice = (candleData.open ?? candleData.close ?? startPrice) as number;
-                const bridgeTime = (lastBarTimeMs + candleTimeMs) / 2;
+                // Align bridge bar to the next candle boundary after lastBar
+                const bridgeTime = lastBarTimeMs + resolutionMs;
 
                 const bridgeBar = {
                   time: bridgeTime,
@@ -537,17 +1057,15 @@ export const Datafeed = (
                 };
 
                 emitProcessedCandle(bridgeBar);
-                lastBar = bridgeBar;
               }
             }
           }
           emitProcessedCandle(candleData);
-          lastBar = candleData as Bar;
         });
 
         activeSubscriptions.set(listenerGuid, { subscription, assetKey: subscriptionAssetKey });
-      } catch (err) {
-        console.error('Error subscribing to OHLCV stream', err);
+      } catch {
+        // Subscription failure — silent, TradingView will retry
       }
     },
 
@@ -667,6 +1185,109 @@ export const Datafeed = (
         console.error('Error fetching marks:', err);
         onDataCallback([]);
       }
+    },
+
+    /** Returns the oldest bar time in ms from the local cache, or null if empty */
+    getOldestBarTime: (): number | null => {
+      if (localBarCache.length === 0) return null;
+      return localBarCache[0].time;
+    },
+
+    /** Returns total cached bar count */
+    getCachedBarCount: (): number => localBarCache.length,
+
+    /**
+     * Pre-fetch older bars into localBarCache so that when TradingView
+     * requests them via getBars (scroll pagination), they're already available.
+     * Called from the scroll listener at ~80% to avoid visible loading.
+     */
+    prefetchOlderBars: (resolution: string) => {
+      const current = baseAssetRef.current;
+      const assetId = current.isPair ? current.address : current.asset;
+      const normalizedRes = normalizeResolution(resolution);
+      const settingsSnapshot: ChartSettings = { ...settingsRef.current };
+      const cacheKey = buildSettingsKey(assetId, normalizedRes, settingsSnapshot);
+
+      // Don't prefetch if already at end of data
+      const emptyKey = `${assetId}-${normalizedRes}`;
+      if ((consecutiveEmptyBars.get(emptyKey) ?? 0) >= EMPTY_THRESHOLD) return;
+
+      // Don't prefetch if no data yet
+      if (localBarCache.length === 0 || localBarCacheKey !== cacheKey) return;
+
+      const oldestBarTime = localBarCache[0].time;
+      const prefetchRequestKey = `prefetch-${cacheKey}-${oldestBarTime}`;
+
+      // Don't duplicate an in-flight prefetch
+      if (pendingRequests.has(prefetchRequestKey)) return;
+
+      const fetchGeneration = cacheGeneration;
+
+      const fetchFn = (): Promise<unknown[]> => {
+        if (current.isPair) {
+          return fetchWithRetry(() =>
+            sdk.fetchMarketOHLCVHistory({
+              address: current.address!,
+              chainId: current.chainId,
+              from: 0,
+              to: oldestBarTime,
+              amount: PAGINATION_AMOUNT,
+              usd: settingsSnapshot.isUsd,
+              period: normalizedRes,
+            } satisfies MarketOHLCVHistoryParams).then((res) => (res as { data?: unknown[] })?.data || []),
+          );
+        }
+        return fetchWithRetry(() =>
+          sdk.fetchTokenOHLCVHistory({
+            address: current.asset!,
+            chainId: current.chainId,
+            from: 0,
+            to: oldestBarTime,
+            amount: PAGINATION_AMOUNT,
+            usd: settingsSnapshot.isUsd,
+            period: normalizedRes,
+          } satisfies TokenOHLCVHistoryParams).then((res) => (res as { data?: unknown[] })?.data || []),
+        );
+      };
+
+      const prefetchPromiseResult = fetchFn().then((rawBars) => {
+        if (fetchGeneration !== cacheGeneration) return [];
+        const processedBars = applyMetricToBars(rawBars, settingsSnapshot);
+
+        // NOTE: Do NOT touch consecutiveEmptyBars here.
+        // This counter is only for getBars flow — the prefetch is silent
+        // and should not push the threshold that stops pagination.
+
+        const newCachedBars: CachedBar[] = processedBars.map((b) => ({
+          time: b.time as number,
+          open: b.open as number,
+          high: b.high as number,
+          low: b.low as number,
+          close: b.close as number,
+          volume: b.volume as number,
+        }));
+
+        // Prepend to local cache
+        if (localBarCacheKey === cacheKey && newCachedBars.length > 0) {
+          const existingOldest = localBarCache[0]?.time ?? Infinity;
+          const olderBars = newCachedBars.filter((b) => b.time < existingOldest);
+          if (olderBars.length > 0) {
+            localBarCache = [...olderBars, ...localBarCache];
+          }
+        }
+
+        if (newCachedBars.length > 0) {
+          upsertPersistentCache(cacheKey, newCachedBars);
+        }
+
+        setTimeout(() => pendingRequests.delete(prefetchRequestKey), 200);
+        return processedBars;
+      }).catch(() => {
+        pendingRequests.delete(prefetchRequestKey);
+        return [];
+      });
+
+      pendingRequests.set(prefetchRequestKey, prefetchPromiseResult);
     },
 
     updateMarksOptions: (newDeployer?: string, newUserAddress?: string) => {

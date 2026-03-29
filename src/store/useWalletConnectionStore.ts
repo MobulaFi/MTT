@@ -1,87 +1,62 @@
 import { create } from 'zustand';
-import { type Address, type Chain } from 'viem';
-import type { WalletType, WalletProvider } from '@/types/wallet';
+import { type Address } from 'viem';
+import { DEFAULT_EVM_CHAIN_ID } from '@/config/evmChains';
 
-export type { WalletType, WalletProvider };
+export type WalletType = 'evm' | 'solana' | null;
 
 interface WalletConnectionState {
-  // EVM wallet state
   evmAddress: Address | null;
-  evmChain: Chain | null;
   isEvmConnected: boolean;
-  
-  // Solana wallet state
+
   solanaAddress: string | null;
   isSolanaConnected: boolean;
-  
-  // Current active wallet
+
   activeWalletType: WalletType;
-  activeProvider: WalletProvider;
-  
-  // Manual disconnect flag to prevent auto-reconnect
-  isManuallyDisconnected: boolean;
-  
-  // Actions
-  setEvmWallet: (address: Address | null, chain: Chain | null) => void;
+  activeEvmChainId: number;
+
+  setEvmWallet: (address: Address | null) => void;
   setSolanaWallet: (address: string | null) => void;
   disconnectWallet: () => void;
-  setActiveWallet: (type: WalletType, provider: WalletProvider) => void;
-  setManuallyDisconnected: (value: boolean) => void;
+  setActiveWallet: (type: WalletType) => void;
+  setActiveEvmChainId: (chainId: number) => void;
 }
 
 export const useWalletConnectionStore = create<WalletConnectionState>((set) => ({
   evmAddress: null,
-  evmChain: null,
   isEvmConnected: false,
   solanaAddress: null,
   isSolanaConnected: false,
   activeWalletType: null,
-  activeProvider: null,
-  isManuallyDisconnected: false,
-  
-  setEvmWallet: (address, chain) =>
+  activeEvmChainId: DEFAULT_EVM_CHAIN_ID,
+
+  setEvmWallet: (address) =>
     set({
       evmAddress: address,
-      evmChain: chain,
       isEvmConnected: !!address,
-      activeWalletType: address ? 'evm' : null,
-      activeProvider: address ? 'metamask' : null,
-      // Clear manual disconnect flag when connecting
-      isManuallyDisconnected: false,
     }),
-  
+
   setSolanaWallet: (address) =>
     set({
       solanaAddress: address,
       isSolanaConnected: !!address,
-      activeWalletType: address ? 'solana' : null,
-      activeProvider: address ? 'phantom' : null,
-      // Clear manual disconnect flag when connecting
-      isManuallyDisconnected: false,
     }),
-  
+
   disconnectWallet: () =>
     set({
       evmAddress: null,
-      evmChain: null,
       isEvmConnected: false,
       solanaAddress: null,
       isSolanaConnected: false,
       activeWalletType: null,
-      activeProvider: null,
-      isManuallyDisconnected: true,
     }),
-  
-  setActiveWallet: (type, provider) =>
+
+  setActiveWallet: (type) =>
     set({
       activeWalletType: type,
-      activeProvider: provider,
     }),
-  
-  setManuallyDisconnected: (value) =>
+
+  setActiveEvmChainId: (chainId) =>
     set({
-      isManuallyDisconnected: value,
+      activeEvmChainId: chainId,
     }),
 }));
-
-

@@ -10,7 +10,7 @@ import { ProtocolSelector } from './ProtocolSelector';
 import { ChainDropdown } from './ChainDropDown';
 import { useChainsAndProtocols } from '@/features/pulse/hooks/useChainsAndProtocols';
 import { usePulseDataStore, ViewName } from '@/features/pulse/store/usePulseDataStore';
-import { usePulseStreamContext } from '@/features/pulse/context/PulseStreamContext';
+import { useUnifiedStreamContext } from '@/features/pulse/context/UnifiedStreamContext';
 
 interface TabItem {
   id: string;
@@ -90,7 +90,7 @@ const FilterModal: React.FC<FilterModalProps> = ({
     resetFilters: storeResetFilters,
   } = usePulseFilterStore();
 
-  const { applyFilters: hookApplyFilters, resetFilters: hookResetFilters } = usePulseStreamContext();
+  const { applyFilters: hookApplyFilters, resetFilters: hookResetFilters } = useUnifiedStreamContext();
 
   // NEW: Get pulse data store for clearing tokens
   const pulseDataStore = usePulseDataStore();

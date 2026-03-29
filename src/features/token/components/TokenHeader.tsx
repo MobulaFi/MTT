@@ -22,16 +22,16 @@ function tokenToHeaderData(tokenData: TokenDetailsResponse['data']): BaseHeaderD
             deployer: tokenData?.deployer,
         },
         secondaryToken: {
-            priceUSD: tokenData.priceToken,
+            priceUSD: tokenData?.priceToken,
             symbol: buildNativeSymbol(tokenData?.chainId)
         },
         address: tokenData?.address,
         liquidityUSD: tokenData?.liquidityUSD,
         totalFeesPaidUSD: tokenData?.totalFeesPaidUSD,
-        socials: tokenData?.socials,
-        exchangeName: tokenData.exchange?.name,
-        exchangeLogo: tokenData.exchange?.logo,
-        createdAt: tokenData.createdAt ?? undefined
+        socials: tokenData?.socials ?? { twitter: null, website: null, telegram: null, others: undefined },
+        exchangeName: tokenData?.exchange?.name,
+        exchangeLogo: tokenData?.exchange?.logo,
+        createdAt: tokenData?.createdAt ?? undefined
         // No secondary token for single token view
         // No liquidity for single token view
     };

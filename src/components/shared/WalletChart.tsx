@@ -117,12 +117,12 @@ const SegmentedChart = dynamic(
             >
               <defs>
                 <linearGradient id="greenGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#18C722" stopOpacity={0.4} />
-                  <stop offset="100%" stopColor="#18C722" stopOpacity={0.05} />
+                  <stop offset="0%" stopColor="#0ECB81" stopOpacity={0.4} />
+                  <stop offset="100%" stopColor="#0ECB81" stopOpacity={0.05} />
                 </linearGradient>
                 <linearGradient id="redGradient" x1="0" y1="1" x2="0" y2="0">
-                  <stop offset="0%" stopColor="#F45B5B" stopOpacity={0.4} />
-                  <stop offset="100%" stopColor="#F45B5B" stopOpacity={0.05} />
+                  <stop offset="0%" stopColor="#EA3943" stopOpacity={0.4} />
+                  <stop offset="100%" stopColor="#EA3943" stopOpacity={0.05} />
                 </linearGradient>
                 <linearGradient id="balanceGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#3B82F6" stopOpacity={0.4} />
@@ -132,25 +132,25 @@ const SegmentedChart = dynamic(
 
               <CartesianGrid 
                 strokeDasharray="3 3" 
-                stroke="#22242D" 
+                stroke="#161616" 
                 vertical={false}
               />
               
               <XAxis 
                 dataKey="date"
                 tickFormatter={formatXAxis}
-                axisLine={{ stroke: '#22242D' }}
-                tickLine={{ stroke: '#22242D' }}
-                tick={{ fill: '#777A8C', fontSize: 10 }}
+                axisLine={{ stroke: '#161616' }}
+                tickLine={{ stroke: '#161616' }}
+                tick={{ fill: '#555555', fontSize: 10 }}
                 interval={Math.max(0, Math.floor(normalizedData.length / 6) - 1)}
                 minTickGap={50}
               />
               
               <YAxis 
                 tickFormatter={formatYAxis}
-                axisLine={{ stroke: '#22242D' }}
-                tickLine={{ stroke: '#22242D' }}
-                tick={{ fill: '#777A8C', fontSize: 10 }}
+                axisLine={{ stroke: '#161616' }}
+                tickLine={{ stroke: '#161616' }}
+                tick={{ fill: '#555555', fontSize: 10 }}
                 domain={[minValue - padding, maxValue + padding]}
                 width={55}
               />
@@ -165,8 +165,8 @@ const SegmentedChart = dynamic(
               
               <Tooltip
                 contentStyle={{
-                  backgroundColor: "#1A1C23",
-                  border: "1px solid #343439",
+                  backgroundColor: "#111111",
+                  border: "1px solid #222222",
                   borderRadius: "4px",
                   color: "#fff",
                   fontSize: "12px",
@@ -181,7 +181,7 @@ const SegmentedChart = dynamic(
                   // Only show the realized value in tooltip
                   if (name !== 'realized') return [null, null];
                   const isAboveRef = value >= referenceValue;
-                  const color = isAboveRef ? '#18C722' : '#F45B5B';
+                  const color = isAboveRef ? '#0ECB81' : '#EA3943';
                   
                   if (isPnl) {
                     const sign = value >= 0 ? '+' : '';
@@ -211,7 +211,7 @@ const SegmentedChart = dynamic(
               <Area 
                 type="monotone" 
                 dataKey="positiveArea"
-                stroke="#18C722"
+                stroke="#0ECB81"
                 strokeWidth={2}
                 fill="url(#greenGradient)"
                 connectNulls={true}
@@ -223,7 +223,7 @@ const SegmentedChart = dynamic(
               <Area 
                 type="monotone" 
                 dataKey="negativeArea"
-                stroke="#F45B5B"
+                stroke="#EA3943"
                 strokeWidth={2}
                 fill="url(#redGradient)"
                 connectNulls={true}

@@ -50,6 +50,7 @@ interface IPairStore {
   setMobileSection: (value: MobileSection) => void;
   updateFilterModal: (modal: Partial<FilterModalType> | null) => void;
   clearTrades: () => void;
+  reset: () => void;
   setTimeframe: (value: Timeframe) => void;
   updateTrades: (value: Transaction[] | ((prev: Transaction[]) => Transaction[])) => void;
   updateFilters: (filterType: 'type' | 'usd' | 'base' | 'quote', value: number[] | number) => void;
@@ -134,6 +135,41 @@ export const usePairTradeStore = create<IPairStore>()(
       clearTrades: () => {
         set((state) => {
           state.trades = [];
+        });
+      },
+      reset: () => {
+        set((state) => {
+          state.trades = [];
+          state.timeframe = '1h';
+          state.orderBy = 'desc';
+          state.mobileSection = MobileSection.INFO;
+          state.isTradesPaused = false;
+          state.filterModalState = { genericType: null, exactType: null };
+          state.filters = {
+            type: [
+              { title: 'Buy / Sell', value: () => true, selected: true },
+              { title: 'Buy', value: (trade) => trade.type === 'buy' },
+              { title: 'Sell', value: (trade) => trade.type === 'sell' },
+            ],
+            usd: {
+              min_max: [0, Number.POSITIVE_INFINITY],
+              filter(trade) {
+                return trade.tokenAmountUsd >= this.min_max[0] && trade.tokenAmountUsd <= this.min_max[1];
+              },
+            },
+            base: {
+              min_max: [0, Number.POSITIVE_INFINITY],
+              filter(trade) {
+                return trade.tokenAmount >= this.min_max[0] && trade.tokenAmount <= this.min_max[1];
+              },
+            },
+            quote: {
+              min_max: [0, Number.POSITIVE_INFINITY],
+              filter(trade) {
+                return trade.tokenAmountVs >= this.min_max[0] && trade.tokenAmountVs <= this.min_max[1];
+              },
+            },
+          };
         });
       },
       updateFilters: (filterType, value) => {

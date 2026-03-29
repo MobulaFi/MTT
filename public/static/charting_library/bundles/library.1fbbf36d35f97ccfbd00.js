@@ -5282,7 +5282,7 @@
             (t.to < this._leftDate &&
               (null === this._nextTime || t.to < this._nextTime)) ||
             0 !== t.countBack
-          ) || this._endOfData
+          ) || this._endOfData || ((window.parent||window).__tvPaginationLocked && this._cache.bars.length > 0)
             ? ((this._pendingSubscribers = []),
               e.forEach(e => {
                 const t = this._moveSubscriberToRealtime(e);
@@ -51887,6 +51887,7 @@
         }
         _requestHistoryPointsIfNeeded() {
           if (this.isEmpty()) return;
+          if ((window.parent||window).__tvPaginationLocked) return;
           if (this._endOfData)
             return void de.logNormal(
               "Skipping loading more data due end of data state",

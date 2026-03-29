@@ -1,8 +1,6 @@
 'use client';
 
 import { create } from 'zustand';
-import { devtools } from 'zustand/middleware';
-import { immer } from 'zustand/middleware/immer';
 
 export type ViewName = 'new' | 'bonding' | 'bonded';
 
@@ -22,7 +20,7 @@ export interface SectionDataState {
   error: string | null;
   lastUpdate: number;
   isVisible: boolean;
-  searchQuery: string; // NEW: Search functionality
+  searchQuery: string;
 }
 
 export interface PulseDataStoreState {
@@ -34,307 +32,244 @@ export interface PulseDataStoreState {
   setLoading(view: ViewName, loading: boolean): void;
   setError(view: ViewName, error: string | null): void;
   mergeToken(view: ViewName, token: PulseToken): void;
+  mergeTokensBatch(updates: Array<{ view: ViewName; token: PulseToken }>): void;
   clearView(view: ViewName): void;
   setVisible(view: ViewName, visible: boolean): void;
-  setSearchQuery(view: ViewName, query: string): void; // NEW
-  getFilteredTokens(view: ViewName): PulseToken[]; // NEW
+  setSearchQuery(view: ViewName, query: string): void;
+  getFilteredTokens(view: ViewName): PulseToken[];
 }
 
-const TOKEN_LIMIT = 50; // Maximum tokens per view
-const PULSE_DEBUG = process.env.NEXT_PUBLIC_PULSE_DEBUG === 'true';
+const TOKEN_LIMIT = 50;
 
 /**
- * Helper to generate unique token identifier
+ * Flatten nested token structure to top-level.
+ * Top-level fields take priority over nested ones (updates are top-level).
  */
+function normalizeToken(token: PulseToken): PulseToken {
+  if (token.token && typeof token.token === 'object') {
+    const { token: nested, ...rest } = token;
+    return { ...nested, ...rest } as PulseToken;
+  }
+  return token;
+}
+
 function getTokenKey(token: PulseToken): string {
   const flatToken = token?.token?.address ? token.token : token;
-  const address = flatToken?.address || '';
-  const chainId = flatToken?.chainId || '';
-  return `${address}_${chainId}`;
+  return `${flatToken?.address || ''}_${flatToken?.chainId || ''}`;
 }
 
-/**
- * Helper to get token name for search
- */
-function getTokenName(token: PulseToken): string {
+function getTokenSortValue(token: PulseToken, view: ViewName): number {
   const flatToken = token?.token?.address ? token.token : token;
-  if (flatToken && 'name' in flatToken && typeof flatToken.name === 'string') {
-    return flatToken.name;
+
+  if (view === 'bonding') {
+    const td = flatToken as { bondingPercentage?: number; bonding_percentage?: number };
+    return Number(td.bondingPercentage ?? td.bonding_percentage ?? 0);
   }
-  return '';
-}
 
-/**
- * Helper to get token symbol for search
- */
-function getTokenSymbol(token: PulseToken): string {
-  const flatToken = token?.token?.address ? token.token : token;
-  if (flatToken && 'symbol' in flatToken && typeof flatToken.symbol === 'string') {
-    return flatToken.symbol;
-  }
-  return '';
-}
+  const td = flatToken as { bonded_at?: string; created_at?: string; createdAt?: string };
+  const timestampStr = view === 'bonded'
+    ? (td.bonded_at || td.created_at || td.createdAt)
+    : (td.created_at || td.createdAt);
 
-/**
- * Helper to get token address for search
- */
-function getTokenAddress(token: PulseToken): string {
-  const flatToken = token?.token?.address ? token.token : token;
-  return flatToken?.address || '';
-}
-
-/**
- * Filter tokens based on search query
- */
-function filterTokensBySearch(tokens: PulseToken[], query: string): PulseToken[] {
-  if (!query.trim()) return tokens;
-
-  const lowerQuery = query.toLowerCase();
-
-  return tokens.filter((token) => {
-    const name = getTokenName(token).toLowerCase();
-    const symbol = getTokenSymbol(token).toLowerCase();
-    const address = getTokenAddress(token).toLowerCase();
-
-    return name.includes(lowerQuery) || symbol.includes(lowerQuery) || address.includes(lowerQuery);
-  });
-}
-
-
-function getTokenTimestamp(token: PulseToken, view: ViewName): number {
-  const flatToken = token?.token?.address ? token.token : token;
-  const tokenData = flatToken as { bonded_at?: string; created_at?: string; createdAt?: string };
-  
-  let timestampStr: string | undefined;
-  
-  if (view === 'bonded') {
-    timestampStr = tokenData.bonded_at || tokenData.created_at || tokenData.createdAt;
-  } else {
-    timestampStr = tokenData.created_at || tokenData.createdAt;
-  }
-  
   if (!timestampStr) return 0;
   const timestamp = new Date(timestampStr).getTime();
   return Number.isNaN(timestamp) ? 0 : timestamp;
 }
 
-function findInsertionIndex(tokens: PulseToken[], tokenTimestamp: number, view: ViewName): number {
+/**
+ * Binary search for correct insertion index (descending order).
+ */
+function findInsertionIndex(tokens: PulseToken[], sortValue: number, view: ViewName): number {
   let left = 0;
   let right = tokens.length;
-
   while (left < right) {
-    const mid = Math.floor((left + right) / 2);
-    const midTimestamp = getTokenTimestamp(tokens[mid], view);
-    
-    if (midTimestamp < tokenTimestamp) {
+    const mid = (left + right) >> 1;
+    if (getTokenSortValue(tokens[mid], view) < sortValue) {
       right = mid;
     } else {
       left = mid + 1;
     }
   }
-
   return left;
 }
 
+function filterTokensBySearch(tokens: PulseToken[], query: string): PulseToken[] {
+  if (!query.trim()) return tokens;
+  const lq = query.toLowerCase();
+  return tokens.filter((t) => {
+    const ft = t?.token?.address ? t.token : t;
+    const name = (ft && 'name' in ft && typeof ft.name === 'string' ? ft.name : '').toLowerCase();
+    const symbol = (ft && 'symbol' in ft && typeof ft.symbol === 'string' ? ft.symbol : '').toLowerCase();
+    const address = (ft?.address || '').toLowerCase();
+    return name.includes(lq) || symbol.includes(lq) || address.includes(lq);
+  });
+}
+
+const mkSection = (): SectionDataState => ({
+  tokens: [],
+  loading: false,
+  error: null,
+  lastUpdate: 0,
+  isVisible: true,
+  searchQuery: '',
+});
+
+/** Helper: shallow-clone sections with one view patched */
+function patchView(
+  sections: Record<ViewName, SectionDataState>,
+  view: ViewName,
+  patch: Partial<SectionDataState>,
+): Record<ViewName, SectionDataState> {
+  return { ...sections, [view]: { ...sections[view], ...patch } };
+}
+
 /**
- * usePulseDataStore (Enhanced)
+ * usePulseDataStore
  *
- * Manages data and loading state independently for each pulse view:
- * - new: Newly created tokens
- * - bonding: Tokens in bonding curve
- * - bonded: Tokens that migrated
+ * Stripped of `persist` (no localStorage serialization on every WS message),
+ * `immer` (no Proxy tree per set()), and `devtools` for minimal overhead
+ * on high-frequency real-time updates.
  *
- * Enhancements:
- * - Search functionality per section
- * - Token limit enforcement (max 50 per view)
- * - Automatic removal of oldest tokens when limit exceeded
- * - Filtered token retrieval
- *
- * Benefits:
- * - Each section can show independent loading states
- * - Skeleton loaders only appear for affected section
- * - Better error isolation
- * - Cleaner component code
- * - Search across tokens
- * - Prevents memory bloat
+ * Key optimisation: `mergeTokensBatch` processes N token updates in a single
+ * `set()` call, instead of N individual state transitions.
  */
-export const usePulseDataStore = create<PulseDataStoreState>()(
-  devtools(
-    immer((set, get) => ({
-      sections: {
-        new: {
-          tokens: [],
-          loading: false,
-          error: null,
-          lastUpdate: 0,
-          isVisible: true,
-          searchQuery: '',
-        },
-        bonding: {
-          tokens: [],
-          loading: false,
-          error: null,
-          lastUpdate: 0,
-          isVisible: true,
-          searchQuery: '',
-        },
-        bonded: {
-          tokens: [],
-          loading: false,
-          error: null,
-          lastUpdate: 0,
-          isVisible: true,
-          searchQuery: '',
-        },
-      },
+export const usePulseDataStore = create<PulseDataStoreState>()((set, get) => ({
+  sections: {
+    new: mkSection(),
+    bonding: mkSection(),
+    bonded: mkSection(),
+  },
 
-      /**
-       * Replace all tokens for a view
-       * Used when initial data loads or major filter changes
-       * Also completely clears old tokens (not merging)
-       * 
-       * Sorts tokens by appropriate timestamp (bonded_at for bonded, created_at for new/bonding)
-       */
-      setTokens(view, tokens) {
-        set((state) => {
-          const sortedTokens = [...tokens].sort((a, b) => {
-            const timeA = getTokenTimestamp(a, view);
-            const timeB = getTokenTimestamp(b, view);
-            return timeB - timeA; // Descending order (newest first)
-          });
+  setTokens(view, tokens) {
+    const normalized = tokens.map(normalizeToken);
+    normalized.sort((a, b) => getTokenSortValue(b, view) - getTokenSortValue(a, view));
+    if (normalized.length > TOKEN_LIMIT) normalized.length = TOKEN_LIMIT;
+    set((state) => ({
+      sections: patchView(state.sections, view, {
+        tokens: normalized,
+        lastUpdate: Date.now(),
+        error: null,
+        searchQuery: '',
+      }),
+    }));
+  },
 
-          // Ensure we don't exceed token limit
-          let limitedTokens = sortedTokens;
-          if (limitedTokens.length > TOKEN_LIMIT) {
-            // Keep newest (first TOKEN_LIMIT items)
-            limitedTokens = limitedTokens.slice(0, TOKEN_LIMIT);
+  setLoading(view, loading) {
+    set((state) => ({ sections: patchView(state.sections, view, { loading }) }));
+  },
+
+  setError(view, error) {
+    set((state) => ({ sections: patchView(state.sections, view, { error, loading: false }) }));
+  },
+
+  /** Single-token convenience wrapper – delegates to batch */
+  mergeToken(view, token) {
+    get().mergeTokensBatch([{ view, token }]);
+  },
+
+  /**
+   * Batch-merge multiple token updates in ONE state transition.
+   * Groups by view, clones each view's array once, applies all updates,
+   * then commits everything in a single set().
+   *
+   * Uses a Map index per view for O(1) existing-token lookup instead of
+   * O(n) findIndex per update.
+   */
+  mergeTokensBatch(updates) {
+    if (updates.length === 0) return;
+
+    set((state) => {
+      // Group by view
+      const byView = new Map<ViewName, PulseToken[]>();
+      for (const { view, token } of updates) {
+        let arr = byView.get(view);
+        if (!arr) { arr = []; byView.set(view, arr); }
+        arr.push(token);
+      }
+
+      const newSections = { ...state.sections };
+
+      for (const [view, viewTokens] of byView) {
+        // Clone once per view
+        const tokens = [...newSections[view].tokens];
+
+        // Build O(1) index: tokenKey → array position
+        const idx = new Map<string, number>();
+        for (let i = 0; i < tokens.length; i++) {
+          idx.set(getTokenKey(tokens[i]), i);
+        }
+
+        const rebuildIndex = () => {
+          idx.clear();
+          for (let i = 0; i < tokens.length; i++) {
+            idx.set(getTokenKey(tokens[i]), i);
           }
+        };
 
-          // Immer allows direct mutation
-          state.sections[view].tokens = limitedTokens;
-          state.sections[view].lastUpdate = Date.now();
-          state.sections[view].error = null;
-          state.sections[view].searchQuery = ''; // Reset search when new data loads
-        });
-      },
+        for (const rawToken of viewTokens) {
+          const normalized = normalizeToken(rawToken);
+          const tokenKey = getTokenKey(normalized);
+          const existingIdx = idx.get(tokenKey);
 
-      /**
-       * Set loading state for a view
-       */
-      setLoading(view, loading) {
-        set((state) => {
-          state.sections[view].loading = loading;
-        });
-      },
+          if (existingIdx !== undefined) {
+            // Merge non-null fields
+            const merged = { ...tokens[existingIdx] } as Record<string, unknown>;
+            const src = normalized as Record<string, unknown>;
+            for (const k in src) {
+              if (src[k] != null) merged[k] = src[k];
+            }
+            tokens[existingIdx] = merged as PulseToken;
 
-      /**
-       * Set error state for a view
-       */
-      setError(view, error) {
-        set((state) => {
-          state.sections[view].error = error;
-          state.sections[view].loading = false;
-        });
-      },
+            // Check if sort position is still correct
+            const sv = getTokenSortValue(merged as PulseToken, view);
+            const prev = existingIdx > 0 ? getTokenSortValue(tokens[existingIdx - 1], view) : Infinity;
+            const next = existingIdx < tokens.length - 1 ? getTokenSortValue(tokens[existingIdx + 1], view) : -Infinity;
 
-      /**
-       * Merge a single token update with optimized sorting
-       *
-       * Logic:
-       * - If token exists: check if timestamp changed, only re-position if needed
-       * - If token is new: use binary search to find correct position
-       * - If limit exceeded: remove oldest token from end
-       * - Uses bonded_at for bonded view, created_at for new/bonding views
-       *
-       * Performance:
-       * - O(1) for updates without position change (most common case)
-       * - O(log n) for new tokens or tokens with changed timestamp
-       * - O(n) worst case when removing from middle, but rare
-       * 
-       * This prevents duplicate tokens and maintains proper ordering by the appropriate timestamp
-       */
-      mergeToken(view, token) {
-        set((state) => {
-          const currentTokens = state.sections[view].tokens;
-          const tokenKey = getTokenKey(token);
-          const tokenTimestamp = getTokenTimestamp(token, view);
-
-          // Find existing token
-          const existingIndex = currentTokens.findIndex((t) => getTokenKey(t) === tokenKey);
-
-          if (existingIndex !== -1) {
-            // Token exists: check if timestamp changed
-            const existingToken = currentTokens[existingIndex];
-            const existingTimestamp = getTokenTimestamp(existingToken, view);
-
-            // If timestamp didn't change significantly (< 1 second), just update in place (O(1))
-            if (Math.abs(existingTimestamp - tokenTimestamp) < 1000) {
-              // Immer allows direct mutation
-              Object.assign(currentTokens[existingIndex], token);
-            } else {
-              // Remove and re-insert
-              currentTokens.splice(existingIndex, 1);
-              const newIndex = findInsertionIndex(currentTokens, tokenTimestamp, view);
-              currentTokens.splice(newIndex, 0, { ...existingToken, ...token });
+            if (sv > prev || sv < next) {
+              tokens.splice(existingIdx, 1);
+              const ins = findInsertionIndex(tokens, sv, view);
+              tokens.splice(ins, 0, merged as PulseToken);
+              rebuildIndex();
             }
           } else {
-            const insertIndex = findInsertionIndex(currentTokens, tokenTimestamp, view);
-            currentTokens.splice(insertIndex, 0, token);
+            // New token — binary-search insert
+            const sv = getTokenSortValue(normalized, view);
+            const ins = findInsertionIndex(tokens, sv, view);
+            tokens.splice(ins, 0, normalized);
+            rebuildIndex();
           }
+        }
 
-          // Enforce token limit: if exceeded, remove oldest (last) token
-          if (currentTokens.length > TOKEN_LIMIT) {
-            currentTokens.splice(TOKEN_LIMIT);
-          }
+        // Enforce limit
+        if (tokens.length > TOKEN_LIMIT) tokens.length = TOKEN_LIMIT;
 
-          state.sections[view].lastUpdate = Date.now();
-        });
-      },
+        newSections[view] = {
+          ...newSections[view],
+          tokens,
+          lastUpdate: Date.now(),
+        };
+      }
 
-      /**
-       * Clear all tokens for a view (when filters change)
-       * COMPLETELY removes all existing tokens
-       */
-      clearView(view) {
-        set((state) => {
-          state.sections[view].tokens = [];
-          state.sections[view].loading = false;
-          state.sections[view].error = null;
-          state.sections[view].searchQuery = ''; // Reset search
-        });
-      },
+      return { sections: newSections };
+    });
+  },
 
-      /**
-       * Set visibility of a view (for conditional rendering)
-       */
-      setVisible(view, visible) {
-        set((state) => {
-          state.sections[view].isVisible = visible;
-        });
-      },
+  clearView(view) {
+    set((state) => ({ sections: patchView(state.sections, view, mkSection()) }));
+  },
 
-      /**
-       * Set search query for a view
-       * NEW: Filter tokens by name/symbol/address
-       */
-      setSearchQuery(view, query) {
-        set((state) => {
-          state.sections[view].searchQuery = query;
-        });
-      },
+  setVisible(view, visible) {
+    set((state) => ({ sections: patchView(state.sections, view, { isVisible: visible }) }));
+  },
 
-      /**
-       * Get filtered tokens based on search query
-       * NEW: Returns tokens matching search
-       */
-      getFilteredTokens(view) {
-        const state = get();
-        const section = state.sections[view];
-        return filterTokensBySearch(section.tokens, section.searchQuery);
-      },
-    })),
-    { name: 'PulseDataStore' }
-  )
-);
+  setSearchQuery(view, query) {
+    set((state) => ({ sections: patchView(state.sections, view, { searchQuery: query }) }));
+  },
+
+  getFilteredTokens(view) {
+    const section = get().sections[view];
+    return filterTokensBySearch(section.tokens, section.searchQuery);
+  },
+}));
 
 export default usePulseDataStore;

@@ -6,8 +6,6 @@ import { WalletConnectButton } from './header/WalletConnectButton';
 
 const SearchModal = dynamic(() => import('./SearchModal').then(mod => ({ default: mod.SearchModal })), { ssr: false });
 const NetworkDebuggerModal = dynamic(() => import('./NetworkDebuggerModal').then(mod => ({ default: mod.NetworkDebuggerModal })), { ssr: false });
-const ConnectWalletModal = dynamic(() => import('./header/ConnectWalletModal').then(mod => ({ default: mod.ConnectWalletModal })), { ssr: false });
-
 import { Plus_Jakarta_Sans } from 'next/font/google';
 import { FiSearch } from 'react-icons/fi';
 import { useApiStore } from '@/store/apiStore';
@@ -15,9 +13,10 @@ import { useHeaderStore } from '@/store/useHeaderStore';
 import { initMobulaClient } from '@/lib/mobulaClient';
 import { LatencyIndicator } from './header/LatencyIndicator';
 import SafeImage from '@/components/SafeImage';
-import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useNavigationStore, type SpaPagePath } from '@/store/useNavigationStore';
 import { MobileWarningBanner } from '@/components/MobileWarningBanner';
+import { PositionsBar } from '@/components/header/PositionsBar';
 
 const plusJakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
@@ -30,6 +29,12 @@ const Header = () => {
   const apiButtonRef = useRef<HTMLButtonElement>(null);
   const latencyIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const pathname = usePathname();
+  const spaView = useNavigationStore((s) => s.view);
+  const navigateToPage = useNavigationStore((s) => s.navigateToPage);
+  // Derive active path from SPA view (pushState doesn't update usePathname)
+  const activePath = spaView
+    ? spaView.type === 'page' ? spaView.path : null
+    : pathname;
 
   const { currentUrl, getLabelForUrl, apiKeySource, serverDisplayLabel, serverLatency, setServerDisplayInfo } = useApiStore();
 
@@ -39,7 +44,6 @@ const Header = () => {
     isSearchOpen,
     isApiSelectorOpen,
     isNetworkDebuggerOpen,
-    isWalletModalOpen,
     latency,
     openSearch,
     closeSearch,
@@ -47,8 +51,6 @@ const Header = () => {
     closeApiSelector,
     openNetworkDebugger,
     closeNetworkDebugger,
-    openWalletModal,
-    closeWalletModal,
     setLatency,
   } = useHeaderStore();
 
@@ -107,15 +109,10 @@ const Header = () => {
     };
   }, [apiKeySource, serverDisplayLabel, setServerDisplayInfo]);
 
-  // Periodically check latency (client mode only; server mode uses dropdown value)
+  // Check latency once on mount (client mode only) — no polling to save CPU/network.
   useEffect(() => {
     if (apiKeySource === 'server') return;
     checkLatency();
-    latencyIntervalRef.current = setInterval(checkLatency, 10000);
-
-    return () => {
-      if (latencyIntervalRef.current) clearInterval(latencyIntervalRef.current);
-    };
   }, [checkLatency, apiKeySource]);
 
   useEffect(() => {
@@ -144,40 +141,34 @@ const Header = () => {
   return (
     <>
       <header className="w-full bg-bgPrimary text-white">
-        <div className="flex items-center border-b h-14 sm:h-16 border-borderDefault justify-between px-3 sm:px-4">
+        <div className="flex items-center border-b h-[56px] sm:h-[72px] border-borderDefault justify-between px-4 sm:px-6 lg:px-8">
           {/* Left side: Logo, Search, Nav */}
-          <div className="flex items-center gap-2 sm:gap-3 md:gap-4 lg:gap-6 flex-1 min-w-0">
+          <div className="flex items-center gap-3 sm:gap-4 md:gap-5 lg:gap-8 flex-1 min-w-0">
             {/* Logo */}
-            <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+            <div className="flex items-center flex-shrink-0">
               <SafeImage
-                src="/mobula.svg"
-                alt="Mobula Logo"
-                width={24}
-                height={24}
-                className="w-5 h-5 sm:w-6 sm:h-6"
+                src="/hawk.jpg"
+                alt="Hawk Logo"
+                width={64}
+                height={64}
+                className="w-10 h-10 sm:w-12 sm:h-12 rounded-full"
                 priority
               />
-              <div className="flex items-baseline gap-1 sm:gap-1.5">
-                <h1 className={`${plusJakarta.className} font-bold text-white text-base sm:text-lg md:text-xl`}>
-                  mobula
-                </h1>
-                <span className="text-[10px] sm:text-xs md:text-sm text-whiteTranslucent hidden sm:inline">API</span>
-              </div>
             </div>
 
             {/* Search - Hidden on small mobile, visible from sm */}
             <div
               onClick={openSearch}
-              className="hidden sm:flex flex-1 max-w-xs md:max-w-md h-9 relative cursor-pointer"
+              className="hidden sm:flex flex-1 max-w-xs md:max-w-sm lg:max-w-md h-10 sm:h-11 relative cursor-pointer"
             >
               <input
                 type="text"
-                placeholder="Search"
-                className="w-full bg-bgOverlay border border-borderDefault text-grayLight text-sm placeholder-grayLight rounded-md pl-10 pr-4 py-[6px] focus:outline-none cursor-pointer"
+                placeholder="Search token or address..."
+                className="w-full bg-bgOverlay border border-borderDefault text-grayLight text-[13px] sm:text-sm placeholder-textTertiary rounded-lg pl-11 pr-12 py-2 focus:outline-none cursor-pointer tracking-wide"
                 readOnly
               />
-              <FiSearch className="absolute left-4 top-[10px] text-grayLight" size={16} />
-              <span className="absolute right-3 top-2.5 border-borderSecondary border-[1px] rounded-sm text-[10px] font-semibold text-grayMedium px-1 flex justify-center items-center">
+              <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-textTertiary" size={17} />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 border-borderSecondary border rounded-[3px] text-[10px] font-semibold text-textTertiary px-1.5 py-0.5 flex justify-center items-center">
                 <span className="animate-spinSlow inline-block">/</span>
               </span>
             </div>
@@ -185,55 +176,48 @@ const Header = () => {
             {/* Search Icon for Mobile */}
             <button
               onClick={openSearch}
-              className="sm:hidden p-1.5 text-textTertiary hover:text-textPrimary hover:bg-bgOverlay rounded-md transition"
+              className="sm:hidden p-2 text-textTertiary hover:text-textPrimary hover:bg-bgOverlay rounded-lg transition"
               aria-label="Search"
             >
-              <FiSearch size={18} />
+              <FiSearch size={20} />
             </button>
 
             {/* Nav - Hidden on mobile/tablet, visible from lg */}
-            <nav className="hidden lg:flex gap-3 xl:gap-4">
-              <Link 
-                href="/" 
-                className={`text-sm transition-colors whitespace-nowrap ${
-                  pathname === '/' 
-                    ? 'text-white font-semibold' 
-                    : 'text-white/70 hover:text-white'
+            <nav className="hidden lg:flex items-center gap-0.5">
+              {([
+                { path: '/trendings' as SpaPagePath, label: 'Trending' },
+                { path: '/surge' as SpaPagePath, label: 'Surge' },
+                { path: '/pulse' as SpaPagePath, label: 'Pulse' },
+                { path: '/portfolio' as SpaPagePath, label: 'Portfolio' },
+              ] as const).map(({ path, label }) => (
+                <button
+                  key={path}
+                  type="button"
+                  onClick={() => navigateToPage(path)}
+                  className={`nav-item-hover text-[13px] xl:text-sm px-3.5 py-2 rounded-md whitespace-nowrap tracking-wide ${
+                    activePath === path
+                      ? 'nav-item-active text-white font-medium'
+                      : 'text-white/60 hover:text-white'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => navigateToPage('/x-tracker')}
+                className={`nav-item-hover text-[13px] xl:text-sm px-3.5 py-2 rounded-md whitespace-nowrap tracking-wide ${
+                  activePath === '/x-tracker'
+                    ? 'nav-item-active text-white font-medium'
+                    : 'text-white/60 hover:text-white'
                 }`}
               >
-                Pulse
-              </Link>
-              <Link
-                href="/embed"
-                className={`text-sm transition-colors whitespace-nowrap ${
-                  pathname?.startsWith('/embed')
-                    ? 'text-white font-semibold'
-                    : 'text-white/70 hover:text-white'
-                }`}
-              >
-                Widgets
-              </Link>
-              <Link
-                href="/x-tracker"
-                className={`text-sm transition-colors whitespace-nowrap ${
-                  pathname?.startsWith('/x-tracker')
-                    ? 'text-white font-semibold'
-                    : 'text-white/70 hover:text-white'
-                }`}
-              >
-                X Tracker
-              </Link>
+                Tracker
+              </button>
             </nav>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 lg:gap-4 text-sm flex-shrink-0">
-            <button
-              onClick={openNetworkDebugger}
-              className="hidden xl:inline-flex items-center gap-2 text-textTertiary hover:text-textPrimary text-xs px-3 py-1.5 hover:bg-bgOverlay rounded-md transition whitespace-nowrap"
-            >
-              Get data
-            </button>
-
+          <div className="flex items-center gap-2 sm:gap-3 md:gap-4 text-sm flex-shrink-0">
             <div className="flex-shrink-0">
               <WalletConnectButton />
             </div>
@@ -252,7 +236,7 @@ const Header = () => {
             </div>
           </div>
         </div>
-        <div className="bg-bgOverlay h-6 sm:h-7 border-b border-borderDefault"></div>
+        <PositionsBar />
         <MobileWarningBanner />
       </header>
 
@@ -266,10 +250,6 @@ const Header = () => {
       <NetworkDebuggerModal
         isOpen={isNetworkDebuggerOpen}
         onClose={closeNetworkDebugger}
-      />
-      <ConnectWalletModal
-        isOpen={isWalletModalOpen}
-        onClose={closeWalletModal}
       />
     </>
   );

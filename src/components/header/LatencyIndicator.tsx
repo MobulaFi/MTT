@@ -45,28 +45,25 @@ export const LatencyIndicator = memo(
       <button
         ref={buttonRef}
         onClick={toggleSelector}
-        className="px-2 py-1 h-7 flex items-center gap-2 bg-bgContainer border border-borderDefault rounded hover:bg-bgContainer/50 transition-colors cursor-pointer relative"
+        className="header-btn px-3 sm:px-4 py-1.5 sm:py-2 h-9 sm:h-10 flex items-center gap-2.5 bg-bgContainer border border-borderDefault rounded-lg hover:bg-bgTertiary hover:border-borderMuted cursor-pointer relative"
       >
-        <div className={`w-4 h-4 ${bg} bg-opacity-30 animate-blink rounded-full relative`}>
-          <div
-            className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 ${bg} rounded-full animate-blink`}
-          />
-        </div>
+        <div className={`w-2 h-2 ${bg} rounded-full animate-blink relative flex-shrink-0`} />
 
-        <div className="flex items-center gap-1 text-[12px] font-medium leading-[18px]">
+        <div className="flex items-center gap-1.5 text-[12px] sm:text-[13px] font-medium tracking-wide">
           <span
             className={`inline-block max-w-[80px] truncate ${text}`}
             title={label}
+            suppressHydrationWarning
           >
             {label}
           </span>
-          <span className={`${text}`}>:</span>
-          <span className={`inline-block w-[45px] text-right ${text}`}>{latencyValue}</span>
+          <span className={`${text} opacity-40`}>/</span>
+          <span className={`inline-block w-[48px] text-right font-mono ${text}`}>{latencyValue}</span>
         </div>
 
         <FiChevronDown
           size={14}
-          className={`${text} transition-transform duration-200 ${
+          className={`${text} opacity-50 transition-transform duration-200 ${
             isApiSelectorOpen ? 'rotate-180' : ''
           }`}
         />

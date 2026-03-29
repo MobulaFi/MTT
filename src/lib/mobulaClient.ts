@@ -9,6 +9,9 @@ import {
 } from '@/config/endpoints';
 import { createLoggingMobulaClient } from './networkLogger';
 
+// Export API key for use in hooks that don't use the SDK client directly
+export const MOBULA_API_KEY = process.env.NEXT_PUBLIC_MOBULA_API_KEY || '';
+
 let client: MobulaClient | null = null;
 let loggingClient: MobulaClient | null = null;
 let currentRestUrl: string = REST_ENDPOINTS[DEFAULT_REST_ENDPOINT];
@@ -77,10 +80,7 @@ if (typeof window !== 'undefined') {
         for (const type of WSS_TYPES) {
           currentWssUrlMap[type] = selectedUrl;
         }
-      } else if (
-        parsed.state?.selectedWssRegion &&
-        parsed.state.selectedWssRegion !== DEFAULT_WSS_REGION
-      ) {
+      } else if (parsed.state?.selectedWssRegion) {
         const regionUrl =
           WSS_REGIONS[parsed.state.selectedWssRegion as keyof typeof WSS_REGIONS];
         if (regionUrl) {

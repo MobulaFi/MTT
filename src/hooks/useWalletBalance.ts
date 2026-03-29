@@ -14,8 +14,8 @@ import { erc20Abi } from 'viem';
 import { base, mainnet, arbitrum, optimism, polygon } from 'viem/chains';
 import { useWalletConnectionStore } from '@/store/useWalletConnectionStore';
 import { getChainFromBlockchain, getChainConfig } from '@/utils/chainMapping';
+import { NATIVE_TOKEN_ADDRESS } from '@/lib/tokens';
 
-const NATIVE_TOKEN_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
 const BALANCE_REFRESH_INTERVAL = 10000;
 
 const WETH_ADDRESSES = [
@@ -282,7 +282,11 @@ export function useWalletBalance({
   blockchain,
   enabled = true,
 }: UseWalletBalanceParams): BalanceResult {
-  const { evmAddress, activeWalletType, solanaAddress } = useWalletConnectionStore();
+  const evmAddress = useWalletConnectionStore((s) => s.evmAddress);
+  const solanaAddress = useWalletConnectionStore((s) => s.solanaAddress);
+  const isEvmConnected = useWalletConnectionStore((s) => s.isEvmConnected);
+  const isSolanaConnected = useWalletConnectionStore((s) => s.isSolanaConnected);
+  const activeWalletType: 'evm' | 'solana' | null = isSolanaConnected ? 'solana' : isEvmConnected ? 'evm' : null;
   const [balance, setBalance] = useState<string>('0');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

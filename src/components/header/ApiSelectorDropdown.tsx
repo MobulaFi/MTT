@@ -75,13 +75,15 @@ export const ApiSelectorDropdown = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const regionLabels: Record<WssRegionKey, string> = {
+    'api-2': 'API-2',
     default: 'Default',
     ovh: 'OVH',
-    mobula: 'Mobula',
+    mobula: 'Hawk',
     'pulse-v2': 'Pulse-V2',
   };
 
   const restLabels: Record<RestEndpointKey, string> = {
+    API2: 'API-2',
     PREMIUM: 'PRM',
     STANDARD: 'STD',
     EXPLORER: 'EXP',
@@ -118,7 +120,7 @@ export const ApiSelectorDropdown = ({
         wssTypes.forEach((type) => {
           wssUrlMap[type] = selectedAllModeWssUrl;
         });
-      } else if (selectedWssRegion && selectedWssRegion !== DEFAULT_WSS_REGION) {
+      } else if (selectedWssRegion) {
         const region = wssRegions.find(r => r.key === selectedWssRegion);
         if (region) {
           wssTypes.forEach((type) => {

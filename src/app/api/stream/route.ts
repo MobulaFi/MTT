@@ -15,9 +15,10 @@ export async function POST(request: Request) {
     });
   }
 
-  const { streamType, payload } = await request.json() as {
+  const { streamType, payload, wssUrl } = await request.json() as {
     streamType: StreamType;
     payload: Record<string, unknown>;
+    wssUrl?: string;
   };
 
   if (!streamType || !payload) {
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
   }
 
   // Priority: 1. Cookie customRestUrl, 2. Env var, 3. Default
-  let restUrl = process.env.MOBULA_SERVER_SIDE_API_URL || 'https://api.mobula.io';
+  let restUrl = process.env.MOBULA_SERVER_SIDE_API_URL || 'https://api-2.mobula.io';
   
   // Check for custom REST URL from cookie (set by ApiSelectorDropdown)
   const cookieHeader = request.headers.get('cookie');
@@ -78,37 +79,8 @@ export async function POST(request: Request) {
         payload,
         (data: unknown) => {
           if (isClientDisconnected) return;
-
+          
           try {
-            // Log ALL stream-svm/evm trades for debugging (sent to Datadog via log drain)
-            if (streamType.startsWith('stream-')) {
-              const d = data as Record<string, unknown>;
-              const inner = (d.data ?? d) as Record<string, unknown>;
-              const baseToken = inner.baseToken as string;
-              const addr0 = inner.addressToken0 as string;
-              const isT0Base = baseToken && addr0 && baseToken === addr0;
-              const postBal = isT0Base ? inner.rawPostBalance0 : inner.rawPostBalance1;
-              const postBalR = isT0Base ? inner.rawPostBalanceRecipient0 : inner.rawPostBalanceRecipient1;
-              const rawAmt = Number(inner.tokenAmountRaw);
-              const humanAmt = Number(inner.tokenAmount);
-              const factor = rawAmt && humanAmt ? rawAmt / humanAmt : null;
-              const humanBal = postBal && factor ? Number(postBal) / factor : null;
-              const humanBalR = postBalR && factor ? Number(postBalR) / factor : null;
-              console.log('[stream-trade]', JSON.stringify({
-                type: inner.type,
-                sender: (inner.sender as string)?.slice(0, 8),
-                recipient: (inner.swapRecipient as string)?.slice(0, 8),
-                tokenAmount: inner.tokenAmount,
-                tokenAmountRaw: inner.tokenAmountRaw,
-                isT0Base,
-                postBal,
-                postBalR,
-                factor,
-                humanBal,
-                humanBalR,
-                hash: (inner.hash as string)?.slice(0, 12),
-              }));
-            }
             const sseMessage = `data: ${JSON.stringify(data)}\n\n`;
             controller.enqueue(encoder.encode(sseMessage));
           } catch (error) {

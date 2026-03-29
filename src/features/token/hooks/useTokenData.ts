@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { streams } from '@/lib/sdkClient';
+import { prefetchTokenDetails } from '@/lib/prefetch';
 import { useTokenStore } from '@/features/token/store/useTokenStore';
 import type { WssTokenDetailsResponseType } from '@mobula_labs/types';
 import { UpdateBatcher } from '@/utils/UpdateBatcher';
@@ -25,9 +26,17 @@ export function useTokenData(
     })
   );
 
+  // Fire REST fetch eagerly during render (t=0ms) via prefetch cache.
+  // Always fetch even when the store was hydrated by navigateToToken — list-page
+  // data (Pulse/Trending) may have different field names or missing fields.
+  if (address && blockchain && !initialData) {
+    prefetchTokenDetails(address, blockchain);
+  }
+
   useEffect(() => {
     if (!address || !blockchain) return;
 
+    let cancelled = false;
     setError(null);
     tokenBatcherRef.current.clear();
 
@@ -36,12 +45,33 @@ export function useTokenData(
       setToken(initialData);
       setTokenLoading(false);
     } else {
-      setTokenLoading(true);
+      // If navigateToToken already hydrated the store with list page data,
+      // show it immediately (no loading spinner) but still fetch full token
+      // details — Pulse/list data may have different field names or missing fields.
+      const existingToken = useTokenStore.getState().token;
+      if (existingToken) {
+        setTokenLoading(false);
+      } else {
+        setTokenLoading(true);
+      }
+      // Always fetch full token details via REST to replace partial list-page data
+      prefetchTokenDetails(address, blockchain)
+        .then((res: any) => {
+          if (cancelled) return;
+          if (res?.data) {
+            setToken(res.data);
+            setTokenLoading(false);
+          }
+        })
+        .catch((err: unknown) => {
+          if (cancelled) return;
+          console.error('Failed to fetch token details:', err);
+        });
     }
 
-    // Subscribe to token updates (streams wrapper handles server/client mode)
+    // Subscribe to live updates via WebSocket
     let subscription: ReturnType<typeof streams.subscribeTokenDetails> | null = null;
-    
+
     try {
       subscription = streams.subscribeTokenDetails(
         { tokens: [{ blockchain, address }] },
@@ -61,6 +91,7 @@ export function useTokenData(
     }
 
     return () => {
+      cancelled = true;
       if (subscription) {
         subscription.unsubscribe();
       }
@@ -69,4 +100,3 @@ export function useTokenData(
     };
   }, [address, blockchain, initialData, setToken, setTokenLoading, setError, reset]);
 }
-

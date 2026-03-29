@@ -49,11 +49,11 @@ export function EmbedBranding({ bgColor }: EmbedBrandingProps) {
         </span>
 
         <Image
-          src={isLight ? '/mobula-dark.svg' : '/mobula.svg'}
-          alt="Mobula"
-          width={14}
-          height={14}
-          style={{ flexShrink: 0 }}
+          src="/hawk.jpg"
+          alt="Hawk"
+          width={28}
+          height={28}
+          style={{ flexShrink: 0, borderRadius: '50%' }}
         />
 
         <Link
@@ -64,7 +64,7 @@ export function EmbedBranding({ bgColor }: EmbedBrandingProps) {
             display: 'inline-flex',
             alignItems: 'center',
             gap: '4px',
-            color: '#18C722',
+            color: '#0ECB81',
             fontWeight: 600,
             textDecoration: 'none',
             transition: 'opacity 0.2s',
@@ -72,7 +72,7 @@ export function EmbedBranding({ bgColor }: EmbedBrandingProps) {
           onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.8')}
           onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
         >
-          <span>Mobula</span>
+          <span>Hawk</span>
         </Link>
       </div>
     </div>

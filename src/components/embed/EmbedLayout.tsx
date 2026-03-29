@@ -10,7 +10,7 @@ interface EmbedLayoutProps {
 
 function EmbedBodyStyles({ config }: { config: EmbedConfig }) {
   useEffect(() => {
-    const bgColor = config.bgColor || '#121319';
+    const bgColor = config.bgColor || '#0A0A0A';
     const theme = getThemeFromBgColor(bgColor);
     const isLight = theme === 'light';
     
@@ -42,30 +42,30 @@ function EmbedBodyStyles({ config }: { config: EmbedConfig }) {
       root.style.setProperty('--tv-color-toolbar-button-background-secondary-hover', '#f3f4f6');
       root.style.setProperty('--tv-color-toolbar-button-background-expanded', '#f3f4f6');
       root.style.setProperty('--tv-color-toolbar-button-text', 'rgba(0, 0, 0, 0.8)');
-      root.style.setProperty('--tv-color-toolbar-button-text-hover', '#18C722');
+      root.style.setProperty('--tv-color-toolbar-button-text-hover', '#0ECB81');
       root.style.setProperty('--tv-color-toolbar-button-text-active', 'rgba(0, 0, 0, 0.9)');
-      root.style.setProperty('--tv-color-toolbar-button-text-active-hover', '#18C722');
-      root.style.setProperty('--tv-color-item-active-text', '#18C722');
+      root.style.setProperty('--tv-color-toolbar-button-text-active-hover', '#0ECB81');
+      root.style.setProperty('--tv-color-item-active-text', '#0ECB81');
       root.style.setProperty('--tv-color-toolbar-toggle-button-background-active', '#f3f4f6');
       root.style.setProperty('--tv-color-toolbar-toggle-button-background-active-hover', '#e5e7eb');
       root.style.setProperty('--tv-color-toolbar-bg', '#ffffff');
       root.style.setProperty('--tv-color-side-toolbar-bg', '#ffffff');
     } else {
-      root.style.setProperty('--tv-color-platform-background', '#121319');
-      root.style.setProperty('--tv-color-pane-background', '#121319');
-      root.style.setProperty('--tv-color-pane-background-secondary', '#121319');
+      root.style.setProperty('--tv-color-platform-background', '#0A0A0A');
+      root.style.setProperty('--tv-color-pane-background', '#0A0A0A');
+      root.style.setProperty('--tv-color-pane-background-secondary', '#0A0A0A');
       root.style.setProperty('--tv-color-toolbar-button-background-hover', '#1a1c23');
       root.style.setProperty('--tv-color-toolbar-button-background-secondary-hover', '#1a1c23');
       root.style.setProperty('--tv-color-toolbar-button-background-expanded', '#1a1c23');
       root.style.setProperty('--tv-color-toolbar-button-text', 'rgba(255, 255, 255, 0.95)');
-      root.style.setProperty('--tv-color-toolbar-button-text-hover', '#18C722');
-      root.style.setProperty('--tv-color-toolbar-button-text-active', '#18C722');
-      root.style.setProperty('--tv-color-toolbar-button-text-active-hover', '#18C722');
-      root.style.setProperty('--tv-color-item-active-text', '#18C722');
+      root.style.setProperty('--tv-color-toolbar-button-text-hover', '#0ECB81');
+      root.style.setProperty('--tv-color-toolbar-button-text-active', '#0ECB81');
+      root.style.setProperty('--tv-color-toolbar-button-text-active-hover', '#0ECB81');
+      root.style.setProperty('--tv-color-item-active-text', '#0ECB81');
       root.style.setProperty('--tv-color-toolbar-toggle-button-background-active', '#1a1c23');
       root.style.setProperty('--tv-color-toolbar-toggle-button-background-active-hover', '#1a1c23');
-      root.style.setProperty('--tv-color-toolbar-bg', '#121319');
-      root.style.setProperty('--tv-color-side-toolbar-bg', '#121319');
+      root.style.setProperty('--tv-color-toolbar-bg', '#0A0A0A');
+      root.style.setProperty('--tv-color-side-toolbar-bg', '#0A0A0A');
     }
     
     // Cleanup on unmount

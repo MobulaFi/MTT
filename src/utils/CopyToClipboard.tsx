@@ -22,8 +22,7 @@ const CopyToClipboard: React.FC<CopyToClipboardProps> = React.memo(
           .writeText(text)
           .then(() => {
             setCopied(true);
-            toast.success(successMessage, {
-              duration: 2000,
+            toast.success('Copied', {
               icon: <Check className="w-4 h-4 text-success" />,
             });
           })

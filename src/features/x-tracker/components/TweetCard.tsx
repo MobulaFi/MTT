@@ -5,6 +5,9 @@ import Link from 'next/link';
 import { Heart, Repeat2, MessageCircle, ExternalLink } from 'lucide-react';
 import type { ResolvedTweet } from '../types';
 import { useTokenResolver, type ResolvedToken } from '../hooks/useTokenResolver';
+import { useXTrackerStore } from '../store/useXTrackerStore';
+import QuickBuyButton from './QuickBuyButton';
+import TokenPreviewPopup from './TokenPreviewPopup';
 
 function formatRelativeTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -78,14 +81,15 @@ function TweetText({
         const token = resolved.get(part.key);
         if (token) {
           return (
-            <Link
-              key={part.key}
-              href={getTokenUrl(token)}
-              className="text-success hover:underline font-medium"
-              title={`${token.name} (${token.symbol})`}
-            >
-              {part.value}
-            </Link>
+            <TokenPreviewPopup key={part.key} token={token}>
+              <Link
+                href={getTokenUrl(token)}
+                className="text-success hover:underline font-medium"
+                title={`${token.name} (${token.symbol})`}
+              >
+                {part.value}
+              </Link>
+            </TokenPreviewPopup>
           );
         }
 
@@ -111,6 +115,43 @@ function TweetText({
 
 interface TweetCardProps {
   tweet: ResolvedTweet;
+}
+
+function QuickBuyRow({ resolved }: { resolved: Map<string, ResolvedToken> }) {
+  const quickBuyEnabled = useXTrackerStore((s) => s.quickBuyEnabled);
+  const quickBuyPresets = useXTrackerStore((s) => s.quickBuyPresets);
+
+  if (!quickBuyEnabled || resolved.size === 0) return null;
+
+  const tokens = Array.from(new Map(
+    Array.from(resolved.values()).map((t) => [`${t.chainId}:${t.address}`, t]),
+  ).values());
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 mt-2">
+      {tokens.map((token) => (
+        <div
+          key={`${token.chainId}:${token.address}`}
+          className="flex items-center gap-1 rounded-md bg-bgContainer/60 px-1.5 py-0.5"
+        >
+          {token.logo && (
+            <img src={token.logo} alt="" className="w-3.5 h-3.5 rounded-full" />
+          )}
+          <span className="text-[10px] font-semibold text-textSecondary">
+            {token.symbol}
+          </span>
+          {quickBuyPresets.slice(0, 3).map((amt) => (
+            <QuickBuyButton
+              key={amt}
+              token={token}
+              amountSol={amt}
+              compact
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function TweetCard({ tweet }: TweetCardProps) {
@@ -187,6 +228,9 @@ function TweetCard({ tweet }: TweetCardProps) {
               {tweet.likeCount > 0 && formatCount(tweet.likeCount)}
             </span>
           </div>
+
+          {/* Quick Buy buttons per detected token */}
+          <QuickBuyRow resolved={resolved} />
         </div>
       </div>
     </div>

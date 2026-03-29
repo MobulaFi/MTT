@@ -1,91 +1,152 @@
 'use client';
 
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
-import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardTrigger,
-} from '@/components/ui/hover-card';
-import {
-  ChefHat,
-  Crosshair,
   Crown,
-  Ghost,
-  Boxes,
   Globe,
-  UserRoundCog,
-  Users,
+  Twitter,
   UserRound,
   Send,
   Bot,
-  Camera,
-  type LucideIcon,
+  ChefHat,
+  Bug,
+  Crosshair,
+  Ghost,
 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useState, memo, useCallback, useRef, useMemo, useEffect, type MouseEvent } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState, useRef, type MouseEvent } from 'react';
 import SafeImage from '@/components/SafeImage';
-import { usePulseDisplayStore } from '@/features/pulse/store/usePulseDisplayStore';
-import type { PulseToken } from '@/features/pulse/store/usePulseDataStore';
 import {
   formatCryptoPrice,
-  formatPercentage,
   formatPureNumber,
 } from '@mobula_labs/sdk';
 import { TradeTimeCell } from '@/components/ui/tradetimecell';
 import { getBuyPercent } from '@/components/shared/StatsCard';
+import type { PulseToken } from '@/features/pulse/store/usePulseDataStore';
+import { usePulseDisplayStore } from '@/features/pulse/store/usePulseDisplayStore';
+import type { DisplayState } from '@/features/pulse/store/usePulseDisplayStore';
+import CopyAddress from '@/utils/CopyAddress';
+import { getMcColor } from '@/lib/format';
+import { validateImageUrl } from '@/components/SafeImage';
+
+/**
+ * Silent logo loader — shows nothing until the image successfully loads.
+ * No loading state, no retry flicker, no fallback visible.
+ * Just fades in smoothly when the image is ready.
+ */
+function SilentLogo({ src, size }: { src: string; size: number }) {
+  const [loaded, setLoaded] = useState(false);
+  const [currentSrc, setCurrentSrc] = useState<string | null>(() => validateImageUrl(src));
+  const retryRef = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const srcRef = useRef(src);
+
+  // Reset when src changes (e.g. WSS sends logo)
+  if (src !== srcRef.current) {
+    srcRef.current = src;
+    const validated = validateImageUrl(src);
+    if (validated) {
+      setCurrentSrc(validated);
+      setLoaded(false);
+      retryRef.current = 0;
+    }
+  }
+
+  // Cleanup timer
+  useRef(() => () => { if (timerRef.current) clearTimeout(timerRef.current); });
+
+  if (!currentSrc) return null;
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={currentSrc}
+      alt=""
+      width={size}
+      height={size}
+      style={{
+        position: 'absolute', inset: 0, width: size, height: size,
+        objectFit: 'cover',
+        opacity: loaded ? 1 : 0,
+      }}
+      onLoad={() => setLoaded(true)}
+      onError={() => {
+        // Silent retry — 2 attempts with delay, then give up invisibly
+        if (retryRef.current < 2 && validateImageUrl(src)) {
+          const attempt = retryRef.current++;
+          timerRef.current = setTimeout(() => {
+            const original = validateImageUrl(src);
+            if (original) {
+              const sep = original.includes('?') ? '&' : '?';
+              setCurrentSrc(`${original}${sep}_r=${attempt + 1}&_t=${Date.now()}`);
+            }
+          }, [2000, 4000][attempt]);
+        }
+        // On final failure, just stay invisible — initials badge shows through
+      }}
+    />
+  );
+}
+
+/**
+ * Resolve logo URL from a metadata URI (IPFS/Arweave JSON).
+ * Fetches the JSON, extracts the `image` field, and returns the direct image URL.
+ * Returns null while loading or if fetch fails. Caches results globally.
+ */
+const uriLogoCache = new Map<string, string | null>();
+
+function useLogoFromUri(uri: string | undefined | null): string | null {
+  const [logo, setLogo] = useState<string | null>(() =>
+    uri ? uriLogoCache.get(uri) ?? null : null,
+  );
+
+  useEffect(() => {
+    if (!uri) return;
+
+    const cached = uriLogoCache.get(uri);
+    if (cached !== undefined) {
+      setLogo(cached);
+      return;
+    }
+
+    let cancelled = false;
+    fetch(uri, { signal: AbortSignal.timeout(4000) })
+      .then(async (res) => {
+        if (!res.ok || cancelled) return;
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('image/')) {
+          uriLogoCache.set(uri, uri);
+          if (!cancelled) setLogo(uri);
+          return;
+        }
+        const json = (await res.json()) as Record<string, unknown>;
+        const imageUrl = (json.image as string) || (json.logo as string) || null;
+        uriLogoCache.set(uri, imageUrl);
+        if (!cancelled) setLogo(imageUrl);
+      })
+      .catch(() => {
+        uriLogoCache.set(uri, null);
+      });
+
+    return () => { cancelled = true; };
+  }, [uri]);
+
+  return logo;
+}
+
+type CustomizeRows = DisplayState['customizeRows'];
 
 interface TokenCardProps {
   pulseData: PulseToken | null;
   shouldBonded?: boolean;
   viewName?: 'new' | 'bonding' | 'bonded';
+  index?: number;
 }
 
-import type { DisplayState } from '@/features/pulse/store/usePulseDisplayStore';
-import CopyToClipboard from '@/utils/CopyToClipboard';
-import CopyAddress from '@/utils/CopyAddress';
-
-type CustomizeRows = DisplayState['customizeRows'];
-type CustomizeRowKey = keyof CustomizeRows;
-
-type TokenStatKey =
-  | 'holders_count'
-  | 'top10Holdings'
-  | 'devHoldingsPercentage'
-  | 'snipersHoldings'
-  | 'insidersHoldings'
-  | 'bundlersHoldings';
-
-interface TokenStatConfig {
-  id: CustomizeRowKey;
-  icon: LucideIcon;
-  valueKey: TokenStatKey;
-  suffix: string;
-  round?: boolean;
-  label: string;
-}
-
-interface TokenSocials {
-  twitter?: string;
-  website?: string;
-  telegram?: string;
-}
-
-interface ExchangeDetails {
-  logo?: string;
-}
-
-interface PulseTokenDetails extends PulseToken {
+interface TD extends PulseToken {
   symbol?: string;
   name?: string;
   logo?: string;
-  exchange?: ExchangeDetails;
-  socials?: TokenSocials;
-  poolAddress?: string;
+  exchange?: { logo?: string; name?: string };
+  socials?: { twitter?: string; website?: string; telegram?: string; uri?: string };
   holdersCount?: number;
   holders_count?: number;
   proTradersCount?: number;
@@ -100,642 +161,360 @@ interface PulseTokenDetails extends PulseToken {
   buys_24h?: number;
   sells_24h?: number;
   bondingPercentage?: number;
-  ath?: number;
-  athDate?: string | number;
-  atl?: number;
-  atlDate?: string | number;
   source?: string;
+  priceUSD?: number;
+  liquidityUSD?: number;
   [key: string]: unknown;
 }
 
-const TOKEN_STATS: ReadonlyArray<TokenStatConfig> = [
-  { id: 'top10Holdings', icon: UserRoundCog, valueKey: 'top10Holdings', suffix: '%', round: true, label: 'Top 10 Holdings' },
-  { id: 'devHoldings', icon: ChefHat, valueKey: 'devHoldingsPercentage', suffix: '%', round: true, label: 'Dev Holding' },
-  { id: 'snipersHoldings', icon: Crosshair, valueKey: 'snipersHoldings', suffix: '%', round: true, label: 'Snipers' },
-  { id: 'insidersHoldings', icon: Ghost, valueKey: 'insidersHoldings', suffix: '%', round: true, label: 'Insiders' },
-  { id: 'bundlersHoldings', icon: Boxes, valueKey: 'bundlersHoldings', suffix: '%', round: true, label: 'Bundlers' },
-];
-
-interface StatBadgeProps {
-  Icon: LucideIcon;
-  value?: number | null;
-  suffix: string;
-  round?: boolean;
-  label: string;
+function resolve(token: PulseToken | null): TD | null {
+  if (!token) return null;
+  if (token.token && typeof token.token === 'object') {
+    const { token: nested, ...rest } = token;
+    // nested first, rest (top-level) wins — updates write to top-level
+    return { ...nested, ...rest } as TD;
+  }
+  return token as TD;
 }
 
-const StatBadge = memo(({ Icon, value, suffix, round, label }: StatBadgeProps) => {
-  const resolvedValue = typeof value === 'number' ? value : Number(value ?? 0);
-  const numericValue = Number.isFinite(resolvedValue) ? resolvedValue : 0;
-  const formattedValue = `${round ? numericValue.toFixed(0) : numericValue}${suffix}`;
-
-  return (
-    <TooltipProvider delayDuration={0}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div className="bg-bgContainer px-1 py-[2px] text-[10px] flex items-center gap-1.5 border transition-colors cursor-pointer border-[#2A2D3880] hover:border-[#3A3D48]">
-            <Icon size={12} className="text-success flex-shrink-0" />
-            <span className="text-success font-medium text-[10px] lg:text-xs">{formattedValue}</span>
-          </div>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="text-xs">
-          <span>
-            {label}: {formattedValue}
-          </span>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-});
-
-StatBadge.displayName = 'StatBadge';
-
-// Memoized social buttons
-interface SocialButtonsProps {
-  token: PulseTokenDetails;
-  customizeRows: CustomizeRows;
+function extractTwitterHandle(url?: string): string {
+  if (!url) return '';
+  const m = url.match(/(?:twitter\.com|x\.com)\/(@?\w+)/i);
+  return m ? `@${m[1].replace(/^@/, '')}` : '';
 }
 
-const SocialButtons = memo(({ token, customizeRows }: SocialButtonsProps) => {
-  const handleClick = useCallback((e: React.MouseEvent, url: string) => {
-    e.stopPropagation();
-    e.preventDefault();
+const C = {
+  cardBg: '#0E0E12',
+  hover:  '#151519',
+  green:  '#00DC82',
+  red:    '#FF4757',
+  yellow: '#F0B90B',
+  blue:   '#60A5FA',
+  white:  '#E8E8EC',
+  dim:    '#9A9AA0',
+  label:  '#4A4A52',
+  muted:  '#3A3A42',
+  badgeBg: '#111114',
+  border: '#1A1A1E',
+} as const;
+
+const f = 'var(--font-mono, monospace)';
+
+const COLUMN_COLOR: Record<string, string> = {
+  new: C.blue,
+  bonding: C.green,
+  bonded: C.yellow,
+};
+
+
+function holdingColor(value: number, threshold: number): string {
+  if (value === 0) return C.dim;
+  return value > threshold ? C.red : C.green;
+}
+
+function TokenCard({ pulseData, shouldBonded = true, viewName, index }: TokenCardProps) {
+  const { customizeRows: cr } = usePulseDisplayStore();
+  const td = useMemo(() => resolve(pulseData), [pulseData]);
+  const [logoHover, setLogoHover] = useState(false);
+  const logoRef = useRef<HTMLDivElement>(null);
+
+  // When logo is null, resolve it client-side from the metadata URI (~25ms IPFS fetch)
+  const uriLogo = useLogoFromUri(!td?.logo ? td?.socials?.uri : null);
+  const effectiveLogo = td?.logo || uriLogo;
+
+  const imgClick = useCallback((e: MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation(); e.preventDefault();
+    if (effectiveLogo) window.open(`https://lens.google.com/uploadbyurl?url=${encodeURIComponent(effectiveLogo)}`, '_blank', 'noopener,noreferrer');
+  }, [effectiveLogo]);
+
+  if (!td) return null;
+
+  const x = td as Record<string, unknown>;
+  const mc = Number(x.marketCapUSD ?? td.marketCap ?? 0);
+  const vol = Number(x.organicVolumeSell24hUSD ?? td.organic_volume_sell_24h ?? 0);
+  const fees = Number(x.feesPaid24hUSD ?? td.fees_paid_24h ?? 0);
+  const buys = Number(x.organicBuys24h ?? td.buys_24h ?? 0);
+  const sells = Number(x.organicSells24h ?? td.sells_24h ?? 0);
+  const total = buys + sells;
+  const buyPct = getBuyPercent(buys, sells);
+  const holders = Number(td.holdersCount ?? td.holders_count ?? 0);
+  const rawMig = Number(x.deployerMigrations ?? td.deployerMigrations ?? 0);
+  const rawMigTotal = Number(x.deployerCreations ?? x.deployer_creations ?? x.deployerTokensCount ?? 0);
+  const migTotal = Math.max(rawMigTotal, 1);
+  const mig = viewName === 'bonded' ? Math.max(rawMig, 1) : rawMig;
+  const bond = td.bondingPercentage ?? 0;
+  const pro = td.proTradersCount ?? 0;
+  const paid = Boolean(x.dexPaid ?? x.dex_paid);
+  const ts = viewName === 'bonded' && td.bonded_at && td.bonded_at !== td.created_at
+    ? td.bonded_at : td.createdAt ?? td.created_at ?? '';
+  const exLogo = td.exchange?.logo ?? null;
+  const twitterHandle = extractTwitterHandle(td.socials?.twitter);
+  const colColor = COLUMN_COLOR[viewName ?? 'new'] ?? C.blue;
+
+  const t10 = Number(td.top10HoldingsPercentage ?? 0);
+  const dev = Number(td.devHoldingsPercentage ?? 0);
+  const snp = Number(td.snipersHoldingsPercentage ?? 0);
+  const ins = Number(td.insidersHoldingsPercentage ?? 0);
+  const bun = Number(td.bundlersHoldingsPercentage ?? 0);
+
+  const openUrl = useCallback((e: MouseEvent, url: string) => {
+    e.stopPropagation(); e.preventDefault();
     window.open(url, '_blank', 'noopener,noreferrer');
   }, []);
 
-  if (!customizeRows.socials || !token.socials) return null;
+  const holdingBadge = (Icon: typeof ChefHat, value: number, threshold: number, label: string) => {
+    const color = holdingColor(value, threshold);
+    return (
+      <span style={{
+        position: 'relative',
+        color, fontSize: 14, padding: '2px 8px',
+        borderRadius: 2, border: `1px solid ${color}30`,
+        background: `${color}10`, whiteSpace: 'nowrap',
+        display: 'inline-flex', alignItems: 'center', gap: 3,
+        cursor: 'default', flex: 1, justifyContent: 'center',
+      }}
+        onMouseEnter={e => {
+          const tip = e.currentTarget.querySelector('[data-tip]') as HTMLElement;
+          if (tip) tip.style.opacity = '1';
+        }}
+        onMouseLeave={e => {
+          const tip = e.currentTarget.querySelector('[data-tip]') as HTMLElement;
+          if (tip) tip.style.opacity = '0';
+        }}
+      >
+        <Icon size={10} />{value.toFixed(0)}%
+        <span data-tip="" style={{
+          position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+          marginBottom: 4, padding: '3px 8px', borderRadius: 3,
+          background: '#222228', color: C.white, fontSize: 12, whiteSpace: 'nowrap',
+          pointerEvents: 'none', opacity: 0, transition: 'opacity 0.05s',
+          zIndex: 30,
+        }}>
+          {label}
+        </span>
+      </span>
+    );
+  };
 
   return (
-    <div className="flex items-center justify-start space-x-1">
-      {token.socials.twitter && (
-        <button
-          type="button"
-          onClick={(e) => handleClick(e, token.socials?.twitter ?? '')}
-          className="text-textTertiary hover:text-success transition-colors"
-          aria-label="Twitter"
-        >
-          <Globe size={15} />
-        </button>
-      )}
-      {token.socials.website && (
-        <button
-          type="button"
-          onClick={(e) => handleClick(e, token.socials?.website ?? '')}
-          className="text-textTertiary hover:text-success transition-colors"
-          aria-label="Website"
-        >
-          <UserRound size={15} />
-        </button>
-      )}
-      {token.socials.telegram && (
-        <button
-          type="button"
-          onClick={(e) => handleClick(e, token.socials?.telegram ?? '')}
-          className="text-textTertiary hover:text-success transition-colors"
-          aria-label="Telegram"
-        >
-          <Send size={15} />
-        </button>
-      )}
-    </div>
-  );
-});
+    <div
+      style={{
+        padding: '12px 14px', cursor: 'pointer', fontFamily: f,
+        background: C.cardBg, borderBottom: `1px solid ${C.border}`,
+      }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = C.hover; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = C.cardBg; }}
+    >
+      <div style={{ display: 'flex', gap: 12 }}>
 
-SocialButtons.displayName = 'SocialButtons';
-
-const isValidDate = (timestamp?: number | string) => {
-  if (!timestamp) return false;
-  const date = new Date(timestamp);
-  return date.getFullYear() !== 1970;
-};
-
-interface AtlStats {
-  ath?: number;
-  athDate?: string | number;
-  atl?: number;
-  atlDate?: string | number;
-}
-
-interface ImageHoverCardProps {
-  logo: string;
-  symbol?: string;
-  name?: string;
-  onImageClick: (event: MouseEvent<HTMLDivElement>) => void;
-  exchangeLogo?: string | null;
-  atlStats?: AtlStats | null;
-  onImageError?: () => void;
-}
-
-const ImageHoverCard = memo(({ logo, symbol, name, onImageClick, exchangeLogo, atlStats, onImageError }: ImageHoverCardProps) => {
-  const [isImageLoading, setIsImageLoading] = useState(false);
-
-  return (
-    <HoverCard openDelay={100} closeDelay={100}>
-      <HoverCardTrigger asChild>
+        {/* LOGO with bonding progress border */}
         <div
-          className="flex-shrink-0 relative w-16 h-16 group cursor-pointer"
-          data-interactive="true"
-          data-image-preview="true"
+          ref={logoRef}
+          onClick={imgClick}
+          onMouseEnter={() => setLogoHover(true)}
+          onMouseLeave={() => setLogoHover(false)}
+          style={{
+            width: 68, height: 68, flexShrink: 0, position: 'relative',
+          }}
         >
-          <div onClick={onImageClick} className="w-full h-full flex items-center justify-center overflow-hidden rounded bg-bgPrimary group-hover:ring-2 group-hover:ring-success/50 transition-all">
-            <SafeImage
-              src={logo}
-              alt={`${symbol} token`}
-              width={64}
-              height={64}
-              className="object-cover w-full h-full"
-              quality={90}
-              priority={false}
-              onError={onImageError}
+          {/* SVG progress border — perimeter fills based on bonding % */}
+          <svg style={{ position: 'absolute', top: 0, left: 0, width: 68, height: 68 }} viewBox="0 0 68 68">
+            {/* bg track */}
+            <rect x="1" y="1" width="66" height="66" rx="2" ry="2"
+              fill="none" stroke={`${colColor}25`} strokeWidth="2" />
+            {/* progress fill */}
+            <rect x="1" y="1" width="66" height="66" rx="2" ry="2"
+              fill="none" stroke={colColor} strokeWidth="2"
+              strokeDasharray="264"
+              strokeDashoffset={bond > 0 && bond < 100 ? 264 * (1 - bond / 100) : 0}
+              style={{ transition: 'stroke-dashoffset 0.3s' }}
             />
-
-            {/* Camera Icon on Hover */}
-            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center rounded">
-              <Camera size={24} className="text-success" />
+          </svg>
+          {/* Logo image — always show initials underneath, overlay logo only when loaded */}
+          <div style={{
+            position: 'absolute', top: 2, left: 2, width: 64, height: 64,
+            borderRadius: 1, overflow: 'hidden', background: C.badgeBg,
+          }}>
+            {/* Initials fallback — always visible as background */}
+            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, color: C.label, position: 'absolute', inset: 0 }}>
+              {(td.symbol?.charAt(0) ?? '?').toUpperCase()}
             </div>
-          </div>
-
-          {/* DEX Badge */}
-          {exchangeLogo && (
-            <div
-              className="absolute -bottom-1 -right-1 w-5 h-5 rounded border border-gray-600 bg-bgSecondary flex items-center justify-center"
-              data-interactive="true"
-            >
-              <SafeImage
-                src={exchangeLogo}
-                alt="DEX"
-                width={16}
-                height={16}
-                className="rounded object-cover"
-                quality={90}
-              />
-            </div>
-          )}
-        </div>
-      </HoverCardTrigger>
-
-      <HoverCardContent side="right" className="w-auto p-0 bg-bgPrimary border-borderDefault">
-        {/* Image Container - CLICKABLE */}
-        <div
-          className="relative w-72 h-72 bg-bgPrimary flex items-center justify-center overflow-hidden rounded-t-lg cursor-pointer group"
-          onClick={onImageClick}
-        >
-          {/* Loading State - Only show if actually loading */}
-          {isImageLoading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black z-10">
-              <div className="w-8 h-8 border-2 border-success/30 border-t-success rounded-full animate-spin" />
-            </div>
-          )}
-
-          {/* Image - Display immediately, no opacity fade */}
-          <SafeImage
-            src={logo}
-            alt={`${symbol} token logo`}
-            fill
-            className="object-contain p-4"
-            quality={95}
-            priority={false}
-            sizes="288px"
-            onLoad={() => setIsImageLoading(false)}
-            onError={() => setIsImageLoading(false)}
-          />
-
-          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center rounded-t-lg">
-            <Camera size={40} className="text-success drop-shadow-lg" />
-          </div>
-        </div>
-
-        <div className=" py-2 bg-bgSecondary border-t border-borderDefault rounded-b-lg space-y-2">
-          {/* Name and Symbol */}
-          <div className='px-3'>
-            <h3 className="text-sm font-bold text-textPrimary truncate">{name}</h3>
-            <p className="text-xs text-textTertiary font-mono">{symbol}</p>
-          </div>
-          {atlStats && atlStats && isValidDate(atlStats.athDate) && isValidDate(atlStats.atlDate) && (
-            <div className="px-3 grid grid-cols-2 gap-3 pt-1 border-t border-borderDefault max-w-xs divide-x divide-borderDefault">
-              <div className="flex flex-col gap-0.5 min-w-0">
-                <div className='flex items-center justify-start gap-2 min-w-0'>
-                  <span className="text-xs text-textPrimary font-semibold whitespace-nowrap">ATH</span>
-                  {atlStats.athDate && (
-                    <span className="text-xs text-textTertiary leading-tight truncate">
-                      (<TradeTimeCell timestamp={atlStats.athDate} showAbsolute={true} hash="" showSeconds={false} />)
-                    </span>
-                  )}
-                </div>
-                <span className="text-xs font-bold text-success">
-                  {atlStats.ath ? formatCryptoPrice(atlStats.ath) : '—'}
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-0.5 min-w-0 pl-3">
-                <div className='flex items-center justify-start gap-2 min-w-0'>
-                  <span className="text-xs text-textPrimary font-semibold whitespace-nowrap">ATL</span>
-                  {atlStats.atlDate && (
-                    <span className="text-xs text-textTertiary leading-tight truncate">
-                      (<TradeTimeCell timestamp={atlStats.atlDate} showAbsolute={true} hash="" showSeconds={false} />)
-                    </span>
-                  )}
-                </div>
-                <span className="text-xs font-bold text-error">
-                  {atlStats.atl ? formatCryptoPrice(atlStats.atl) : '—'}
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-      </HoverCardContent>
-    </HoverCard>
-  );
-});
-
-ImageHoverCard.displayName = 'ImageHoverCard';
-
-const resolvePulseTokenDetails = (token: PulseToken | null): PulseTokenDetails | null => {
-  if (!token) return null;
-  if (token.token && typeof token.token === 'object') {
-    const { token: nestedToken, ...rest } = token;
-    return { ...rest, ...nestedToken } as PulseTokenDetails;
-  }
-  return token as PulseTokenDetails;
-};
-
-const formatAddressLabel = (address?: string): string => {
-  if (!address) return 'Unknown';
-  if (address.length <= 12) return address;
-  return `${address.slice(0, 8)}...${address.slice(-4)}`;
-};
-
-
-
-// Optimized main component
-function TokenCard({ pulseData, shouldBonded = true, viewName }: TokenCardProps) {
-  const { customizeRows } = usePulseDisplayStore();
-  const router = useRouter();
-
-  const tokenDetails = useMemo(() => resolvePulseTokenDetails(pulseData), [pulseData]);
-  const [logoError, setLogoError] = useState(false);
-
-  useEffect(() => {
-    setLogoError(false);
-  }, [tokenDetails?.logo]);
-
-  const linkHref = useMemo(() => {
-    if (!tokenDetails?.chainId || !tokenDetails?.address) {
-      return null;
-    }
-    return `/token/${tokenDetails.chainId}/${tokenDetails.address}`;
-  }, [tokenDetails]);
-
-  const handleImageClick = useCallback(
-    (e: MouseEvent<HTMLDivElement>) => {
-      e.stopPropagation();
-      e.preventDefault();
-
-      if (!tokenDetails?.logo) return;
-
-      const lensUrl = `https://lens.google.com/uploadbyurl?url=${encodeURIComponent(tokenDetails.logo)}`;
-      window.open(lensUrl, '_blank', 'noopener,noreferrer');
-    },
-    [tokenDetails?.logo]
-  );
-
-  const handleCardClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      const target = e.target as HTMLElement;
-
-      if (
-        target.closest('button') ||
-        target.closest('[data-interactive]') ||
-        target.closest('.stat-badge') ||
-        target.closest('.social-link') ||
-        target.closest('[data-bonding]') ||
-        target.closest('[data-image-preview]')
-      ) {
-        return;
-      }
-
-      if (linkHref) {
-        router.push(linkHref);
-      }
-    },
-    [linkHref, router]
-  );
-
-  // All hooks must be called before any early return to follow React Rules of Hooks
-  const visibleStats = useMemo(() => TOKEN_STATS.filter((stat) => customizeRows[stat.id]), [customizeRows]);
-  const holdersCount = useMemo(() => tokenDetails?.holdersCount ?? tokenDetails?.holders_count ?? 0, [tokenDetails?.holdersCount, tokenDetails?.holders_count]);
-  const tokenSymbol = useMemo(() => tokenDetails?.symbol ?? '', [tokenDetails?.symbol]);
-  const logoSrc = tokenDetails?.logo;
-  const exchangeLogo = useMemo(() => tokenDetails?.exchange?.logo ?? null, [tokenDetails?.exchange?.logo]);
-  const hasLogo = Boolean(logoSrc) && !logoError;
-  const formattedAddress = useMemo(() => formatAddressLabel(tokenDetails?.address), [tokenDetails?.address]);
-  const buys = useMemo(() => Number(tokenDetails?.buys_24h ?? 0), [tokenDetails?.buys_24h]);
-  const sells = useMemo(() => Number(tokenDetails?.sells_24h ?? 0), [tokenDetails?.sells_24h]);
-  const buyPercent = useMemo(() => getBuyPercent(buys, sells), [buys, sells]);
-  const migrations = useMemo(() => tokenDetails?.deployerMigrations ?? 0, [tokenDetails?.deployerMigrations]);
-  const hasMigrations = migrations > 0;
-  const priceChange = useMemo(() => tokenDetails?.price_change_24h ?? 0, [tokenDetails?.price_change_24h]);
-  const bondingLabel = useMemo(() => formatPercentage(tokenDetails?.bondingPercentage ?? 0), [tokenDetails?.bondingPercentage]);
-  const sourceLabel = useMemo(() => tokenDetails?.source ?? 'Unknown', [tokenDetails?.source]);
-
-  const timestamp = useMemo(() => {
-    if (viewName === 'bonded' && tokenDetails?.bonded_at && typeof tokenDetails.bonded_at === 'string' && tokenDetails.bonded_at !== tokenDetails.created_at) {
-      return tokenDetails.bonded_at;
-    }
-    return tokenDetails?.createdAt ?? tokenDetails?.created_at ?? '';
-  }, [viewName, tokenDetails?.bonded_at, tokenDetails?.created_at, tokenDetails?.createdAt]);
-
-  // Memoize all formatted values to prevent recalculation on every render
-  const formattedMarketCap = useMemo(
-    () => formatCryptoPrice(tokenDetails?.marketCap ?? 0),
-    [tokenDetails?.marketCap]
-  );
-
-  const formattedVolume = useMemo(
-    () => formatCryptoPrice(tokenDetails?.organic_volume_sell_24h ?? 0),
-    [tokenDetails?.organic_volume_sell_24h]
-  );
-
-  const formattedFees = useMemo(
-    () => formatCryptoPrice(tokenDetails?.fees_paid_24h ?? 0, {
-      minFractionDigits: 1,
-      maxFractionDigits: 1,
-    }),
-    [tokenDetails?.fees_paid_24h]
-  );
-
-  const formattedPriceChange = useMemo(
-    () => formatPercentage(priceChange, {
-      maxFractionDigits: 2,
-      minFractionDigits: 2,
-    }),
-    [priceChange]
-  );
-
-  if (!tokenDetails) {
-    return <div className="p-2 text-gray-500 text-xs">Invalid</div>;
-  }
-
-
-  return (
-    <TooltipProvider delayDuration={0}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div
-            onClick={handleCardClick}
-            className="cursor-pointer bg-bgPrimary hover:bg-bgTableHover text-textPrimary transition-all duration-200 px-3 py-2 rounded-md"
-          >
-            {/* Header Section */}
-            <div className="flex justify-between w-full items-start gap-4">
-              {/* Left: Token Image + Details */}
-              <div className="flex space-x-3 flex-1 min-w-0">
-                {hasLogo && logoSrc ? (
-                  <ImageHoverCard
-                    logo={logoSrc}
-                    symbol={tokenSymbol}
-                    name={tokenDetails.name}
-                    exchangeLogo={exchangeLogo}
-                    onImageClick={handleImageClick}
-                    onImageError={() => setLogoError(true)}
-                    atlStats={{
-                      ath: tokenDetails.ath,
-                      athDate: tokenDetails.athDate,
-                      atl: tokenDetails.atl,
-                      atlDate: tokenDetails.atlDate,
-                    }}
-                  />
-                ) : (
-                  <div className="flex-shrink-0 relative w-16 h-16">
-                    <div className="w-full h-full flex items-center justify-center bg-[#0a0f1a] border border-blue-500/40 rounded">
-                      <span className="text-xl font-semibold text-blue-400 tracking-wide select-none">
-                        {(tokenDetails.name?.charAt(0) ?? tokenSymbol.charAt(0) ?? '?').toUpperCase()}
-                      </span>
-                    </div>
-                    {exchangeLogo && (
-                      <div
-                        className="absolute -bottom-1 -right-1 w-5 h-5 rounded border border-gray-600 bg-bgSecondary flex items-center justify-center"
-                        data-interactive="true"
-                      >
-                        <SafeImage src={exchangeLogo} alt="DEX" width={16} height={16} className="rounded object-cover" quality={90} />
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Token Details */}
-                <div className="flex space-y-1 flex-col min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div
-                      onClick={(e) => {
-                        e.stopPropagation();
-                      }}
-                    >
-
-                      <CopyAddress display={tokenDetails.name ?? ''} value={tokenDetails.address ?? ''} />
-                    </div>
-
-
-                    {/* Social Buttons */}
-                    <div className="social-link">
-                      <SocialButtons token={tokenDetails} customizeRows={customizeRows} />
-                    </div>
-                  </div>
-
-                  {/* Symbol + Holders + Pro Traders */}
-                  <div className="flex items-center gap-3 flex-wrap text-xs text-textTertiary">
-                    <span className="font-semibold uppercase">{tokenSymbol}</span>
-
-                    {customizeRows.holders && (
-                      <TooltipProvider delayDuration={0}>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="flex items-center gap-1 cursor-pointer">
-                              <UserRound size={14} className="text-textTertiary flex-shrink-0" />
-                              {formatPureNumber(holdersCount, {
-                                maxFractionDigits: 0,
-                                minFractionDigits: 0,
-                              })}
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent side="top" className="text-xs">
-                            Holders
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
-
-                    {customizeRows.proTraders && (
-                      <TooltipProvider delayDuration={0}>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="flex items-center gap-1 cursor-pointer">
-                              <Bot size={14} className="text-textTertiary flex-shrink-0" />
-                              {tokenDetails.proTradersCount ?? 0}
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent side="top" className="text-xs">
-                            Pro traders
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
-
-                    {customizeRows.devMigrations && (
-                      <TooltipProvider delayDuration={0}>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="flex items-center gap-1 cursor-pointer">
-                              <Crown
-                                size={14}
-                                className={`flex-shrink-0 ${hasMigrations ? 'text-success' : 'text-textTertiary'}`}
-                              />
-                              <span className={hasMigrations ? 'text-success' : 'text-textTertiary'}>
-                                {migrations}
-                              </span>
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent side="top" className="text-xs">
-                            Deployer migrations
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
-                  </div>
-
-                  {/* Creation Date + Address */}
-                  <div className="flex items-center gap-2 text-xs text-textTertiary flex-wrap">
-                    <TradeTimeCell
-                      timestamp={timestamp}
-                      showAbsolute={false}
-                      hash=""
-                    />
-
-                    <span className="text-accentPurple font-mono">{formattedAddress}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Right: Market Data */}
-              <div className="flex flex-col items-end flex-shrink-0 min-w-[90px] gap-1">
-                {customizeRows.marketCap && (
-                  <div className="flex gap-1 justify-end text-xs">
-                    <span className="text-textTertiary font-medium">Mcap</span>
-                    <span className="text-white font-semibold">
-                      {formattedMarketCap}
-                    </span>
-                  </div>
-                )}
-                {customizeRows.volume && (
-                  <div className="flex gap-1 justify-end text-xs">
-                    <span className="text-textTertiary font-medium">Vol</span>
-                    <span className="text-white font-semibold">
-                      {formattedVolume}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Stats / Bottom Section */}
-            <div className="flex items-center justify-end mt-1">
-              <div className="flex items-center ml-auto">
-                {customizeRows.fees && (
-                  <div className="flex items-center gap-1 text-xs font-normal text-right w-15">
-                    <div className="text-textTertiary w-4">F</div>
-                    <div className="text-success font-normal truncate">
-                      {formattedFees}
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex items-center gap-1 text-xs font-normal text-right w-15">
-                  <div className="text-textTertiary w-4">N</div>
-                  <div className={`${priceChange >= 0 ? 'text-success' : 'text-error'} font-normal truncate`}>
-                    {priceChange >= 0 ? '+' : ''}
-                    {formattedPriceChange}
-                  </div>
-                </div>
-
-                {customizeRows.tx && (
-                  <div className="flex items-center gap-1 text-xs font-normal text-right w-15">
-                    <div className="text-textTertiary w-6">TX</div>
-                    <div className="text-textPrimary font-normal truncate">
-                      {formatPureNumber(buys + sells)}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Stats */}
-            {visibleStats.length > 0 && (
-              <div className="flex items-center w-full">
-                <div className="flex items-center gap-1 flex-wrap w-[70%]">
-                  {visibleStats.map(({ icon: Icon, valueKey, suffix, round, label }) => {
-                    const rawValue = tokenDetails[valueKey];
-                    const numericValueCandidate = typeof rawValue === 'number' ? rawValue : Number(rawValue ?? 0);
-                    const numericValue = Number.isFinite(numericValueCandidate) ? numericValueCandidate : 0;
-
-                    return (
-                      <div key={valueKey} className="stat-badge" data-interactive="true">
-                        <StatBadge Icon={Icon} value={numericValue} suffix={suffix} round={round} label={label} />
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {customizeRows.tx && (
-                  <div className="flex-1">
-                    <div className="w-full h-1 bg-white rounded-full overflow-hidden relative mt-2">
-                      <div
-                        className="absolute top-0 left-0 h-full bg-success rounded-full transition-all duration-300"
-                        style={{ width: `${buyPercent}%` }}
-                      />
-                      <div
-                        className="absolute top-0 bg-black"
-                        style={{ left: `${buyPercent}%`, width: '2px', height: '100%' }}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
+            {/* Logo overlay — silent: invisible until loaded, no visible retry/fallback */}
+            {effectiveLogo && (
+              <SilentLogo src={effectiveLogo} size={64} />
             )}
           </div>
-        </TooltipTrigger>
+          {exLogo && (
+            <div style={{ position: 'absolute', bottom: 0, right: 0, width: 22, height: 22, borderRadius: 2, background: C.cardBg, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1 }}>
+              <SafeImage src={exLogo} alt="" width={18} height={18} className="rounded" quality={70} />
+            </div>
+          )}
+          {/* Hover tooltip — enlarged logo */}
+          {logoHover && effectiveLogo && (
+            <div style={{
+              position: 'absolute', bottom: 76, left: 0, zIndex: 50,
+              width: 200, height: 200, borderRadius: 4,
+              border: `1px solid ${C.border}`, background: C.cardBg,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+              overflow: 'hidden', pointerEvents: 'none',
+            }}>
+              <SilentLogo src={effectiveLogo} size={200} />
+            </div>
+          )}
+        </div>
 
-        <TooltipContent side="top" className="text-xs">
-          <span className="text-success">
-            {shouldBonded ? `Bonding: ${bondingLabel}` : `${sourceLabel}`}
-          </span>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+        {/* CENTER */}
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+
+          {/* ROW 1: Symbol + name + copy */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, lineHeight: '22px' }}>
+            <span style={{ fontSize: 21, color: C.white, whiteSpace: 'nowrap' }}>
+              {td.symbol ?? '???'}
+            </span>
+            <span style={{ fontSize: 16, color: C.label, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 130 }}>
+              {td.name ?? ''}
+            </span>
+            <span onClick={e => e.stopPropagation()} style={{ flexShrink: 0, lineHeight: 0 }}>
+              <CopyAddress display="" value={td.address ?? ''} />
+            </span>
+          </div>
+
+          {/* ROW 2: age + social icons + holders + pro traders + buys/sells + Paid */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 16, lineHeight: '20px', flexWrap: 'wrap' }}>
+            <span style={{ color: C.dim }}><TradeTimeCell timestamp={ts} showAbsolute={false} hash="" /></span>
+            {td.socials?.twitter && (
+              <span onClick={e => openUrl(e as unknown as MouseEvent, td.socials!.twitter!)} style={{ cursor: 'pointer', color: C.blue, lineHeight: 0, flexShrink: 0 }}><Twitter size={15} /></span>
+            )}
+            {cr.socials && td.socials?.website && (
+              <span onClick={e => openUrl(e as unknown as MouseEvent, td.socials!.website!)} style={{ cursor: 'pointer', color: C.muted, lineHeight: 0, flexShrink: 0 }}><Globe size={15} /></span>
+            )}
+            {cr.socials && td.socials?.telegram && (
+              <span onClick={e => openUrl(e as unknown as MouseEvent, td.socials!.telegram!)} style={{ cursor: 'pointer', color: C.muted, lineHeight: 0, flexShrink: 0 }}><Send size={15} /></span>
+            )}
+            {cr.devMigrations && (mig > 0 || migTotal > 0) && (
+              <span style={{ color: mig > 0 ? C.green : C.dim, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                <Crown size={15} />{migTotal > 0 ? `${mig}/${migTotal}` : mig}
+              </span>
+            )}
+            {cr.holders && (
+              <span style={{ color: C.white, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                <UserRound size={15} />{formatPureNumber(holders, { maxFractionDigits: 0, minFractionDigits: 0 })}
+              </span>
+            )}
+            {cr.proTraders && pro > 0 && (
+              <span style={{ color: C.white, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                <Bot size={15} />{pro}
+              </span>
+            )}
+            {cr.tx && (buys > 0 || sells > 0) && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ color: C.green }}>{formatPureNumber(buys, { maxFractionDigits: 0, minFractionDigits: 0 })}</span>
+                <span style={{ color: C.red }}>{formatPureNumber(sells, { maxFractionDigits: 0, minFractionDigits: 0 })}</span>
+              </span>
+            )}
+            {cr.dexPaid && paid && (
+              <span style={{ fontSize: 13, color: C.green, background: `${C.green}15`, padding: '1px 6px', borderRadius: 2 }}>Paid</span>
+            )}
+          </div>
+
+          {/* ROW 3: @twitterHandle (fixed height even if empty) */}
+          <div style={{ minHeight: 18, display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, lineHeight: '18px' }}>
+            {twitterHandle && (
+              <span
+                onClick={e => openUrl(e as unknown as MouseEvent, td.socials!.twitter!)}
+                style={{ cursor: 'pointer', color: C.blue }}
+              >
+                {twitterHandle}
+              </span>
+            )}
+          </div>
+
+          {/* ROW 4: holdings % badges with icons */}
+          {(cr.top10Holdings || cr.devHoldings || cr.snipersHoldings || cr.insidersHoldings || cr.bundlersHoldings) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {cr.top10Holdings && holdingBadge(UserRound, t10, 10, 'Top 10 Holding')}
+              {cr.devHoldings && holdingBadge(ChefHat, dev, 1, 'Dev Holding')}
+              {cr.snipersHoldings && holdingBadge(Crosshair, snp, 5, 'Snipers Holding')}
+              {cr.insidersHoldings && holdingBadge(Ghost, ins, 5, 'Insiders Holding')}
+              {cr.bundlersHoldings && holdingBadge(Bug, bun, 5, 'Bundlers Holding')}
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT — rows aligned with center: row1=mc, row2=volume, row3=F/TX/bar */}
+        <div style={{ flexShrink: 0, textAlign: 'right', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {/* Row 1 — mc (aligned with symbol/name) */}
+          {cr.marketCap && (
+            <div style={{ whiteSpace: 'nowrap', lineHeight: '22px' }}>
+              <span style={{ fontSize: 15, color: C.label, marginRight: 4 }}>mc</span>
+              <span style={{ fontSize: 19, color: getMcColor(mc) }}>${formatCryptoPrice(mc)}</span>
+            </div>
+          )}
+          {/* Row 2 — volume (aligned with age/social/holders) */}
+          {cr.volume && (
+            <div style={{ fontSize: 15, color: C.white, whiteSpace: 'nowrap', lineHeight: '20px' }}>
+              ${formatCryptoPrice(vol)}
+            </div>
+          )}
+          {/* Row 3 — F + TX + bar (aligned with twitter handle) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, minHeight: 18 }}>
+            {cr.fees && (
+              <span style={{ color: C.white, whiteSpace: 'nowrap' }}>F ${formatCryptoPrice(fees)}</span>
+            )}
+            {cr.tx && (
+              <>
+                <span style={{ color: C.white, whiteSpace: 'nowrap' }}>TX {formatPureNumber(total, { maxFractionDigits: 0, minFractionDigits: 0 })}</span>
+                <div style={{
+                  flex: 1, height: 3, borderRadius: 1, minWidth: 20,
+                  background: total > 0 ? C.red : C.muted, overflow: 'hidden', position: 'relative',
+                }}>
+                  <div style={{
+                    position: 'absolute', top: 0, left: 0,
+                    height: '100%', background: C.green,
+                    width: `${buyPct}%`, borderRadius: 1,
+                  }} />
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
-// Custom comparison function for React.memo to prevent unnecessary re-renders
 export default memo(TokenCard, (prev, next) => {
-  // Only re-render if relevant data changed
-  const prevToken = resolvePulseTokenDetails(prev.pulseData);
-  const nextToken = resolvePulseTokenDetails(next.pulseData);
-
-  if (!prevToken || !nextToken) {
-    return prevToken === nextToken;
-  }
-
-  // Compare only fields that affect rendering
+  if (prev.shouldBonded !== next.shouldBonded || prev.viewName !== next.viewName || prev.index !== next.index) return false;
+  const a = resolve(prev.pulseData);
+  const b = resolve(next.pulseData);
+  if (!a || !b) return a === b;
+  const x1 = a as Record<string, unknown>;
+  const x2 = b as Record<string, unknown>;
   return (
-    prevToken.price_change_24h === nextToken.price_change_24h &&
-    prevToken.marketCap === nextToken.marketCap &&
-    prevToken.organic_volume_sell_24h === nextToken.organic_volume_sell_24h &&
-    prevToken.fees_paid_24h === nextToken.fees_paid_24h &&
-    prevToken.bondingPercentage === nextToken.bondingPercentage &&
-    prevToken.holders_count === nextToken.holders_count &&
-    prevToken.holdersCount === nextToken.holdersCount &&
-    prevToken.buys_24h === nextToken.buys_24h &&
-    prevToken.sells_24h === nextToken.sells_24h &&
-    prevToken.logo === nextToken.logo &&
-    prev.shouldBonded === next.shouldBonded &&
-    prev.viewName === next.viewName
+    (x1.marketCapUSD ?? a.marketCap) === (x2.marketCapUSD ?? b.marketCap) &&
+    (x1.organicVolumeSell24hUSD ?? a.organic_volume_sell_24h) === (x2.organicVolumeSell24hUSD ?? b.organic_volume_sell_24h) &&
+    (x1.feesPaid24hUSD ?? a.fees_paid_24h) === (x2.feesPaid24hUSD ?? b.fees_paid_24h) &&
+    (x1.organicBuys24h ?? a.buys_24h) === (x2.organicBuys24h ?? b.buys_24h) &&
+    (x1.organicSells24h ?? a.sells_24h) === (x2.organicSells24h ?? b.sells_24h) &&
+    (a.holdersCount ?? a.holders_count) === (b.holdersCount ?? b.holders_count) &&
+    a.proTradersCount === b.proTradersCount &&
+    a.deployerMigrations === b.deployerMigrations &&
+    (x1.deployerCreations ?? x1.deployer_creations ?? x1.deployerTokensCount) === (x2.deployerCreations ?? x2.deployer_creations ?? x2.deployerTokensCount) &&
+    a.bondingPercentage === b.bondingPercentage &&
+    a.top10HoldingsPercentage === b.top10HoldingsPercentage &&
+    a.devHoldingsPercentage === b.devHoldingsPercentage &&
+    a.snipersHoldingsPercentage === b.snipersHoldingsPercentage &&
+    a.insidersHoldingsPercentage === b.insidersHoldingsPercentage &&
+    a.bundlersHoldingsPercentage === b.bundlersHoldingsPercentage &&
+    a.logo === b.logo &&
+    a.symbol === b.symbol &&
+    a.name === b.name &&
+    a.socials?.twitter === b.socials?.twitter &&
+    a.socials?.website === b.socials?.website &&
+    a.socials?.telegram === b.socials?.telegram &&
+    a.exchange?.logo === b.exchange?.logo &&
+    (x1.dexPaid ?? x1.dex_paid) === (x2.dexPaid ?? x2.dex_paid) &&
+    (a.createdAt ?? a.created_at) === (b.createdAt ?? b.created_at) &&
+    a.bonded_at === b.bonded_at
   );
 });
