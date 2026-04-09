@@ -40,28 +40,13 @@ const TABS = ["Open Trades", "Closed Trades", "Best Trades", "Activity"] as cons
 export function WalletPortfolioModal() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  // Individual selectors — avoid re-renders from unrelated store changes
-  const isOpen = useWalletModalStore((s) => s.isOpen);
-  const walletAddress = useWalletModalStore((s) => s.walletAddress);
-  const txHash = useWalletModalStore((s) => s.txHash);
-  const blockchain = useWalletModalStore((s) => s.blockchain);
-  const syncFromUrl = useWalletModalStore((s) => s.syncFromUrl);
-  const closeWalletModal = useWalletModalStore((s) => s.closeWalletModal);
-
+  const { isOpen, closeWalletModal, walletAddress, txHash, blockchain, syncFromUrl } = useWalletModalStore();
+  
   // Ref to track intentional close (prevents re-open from stale URL params)
   const justClosedRef = React.useRef(false);
   const { data: walletData, isLoading, walletHistory, fetchWalletHistoryData, refetchActivity, closeWebSocket } = useWalletPortfolio(walletAddress ?? undefined, blockchain ?? undefined);
-
-  const data = useWalletAnalysisStore((s) => s.data);
-  const timeframe = useWalletAnalysisStore((s) => s.timeframe);
-  const loading = useWalletAnalysisStore((s) => s.loading);
-  const analysisActions = useWalletAnalysisStore.getState;
-
-  const activePositionData = useWalletPortfolioStore((s) => s.activePositionData);
-  const assetFilter = useWalletPortfolioStore((s) => s.assetFilter);
-  const dateFilter = useWalletPortfolioStore((s) => s.dateFilter);
-  const isHistoryLoading = useWalletPortfolioStore((s) => s.isHistoryLoading);
-  const portfolioActions = useWalletPortfolioStore.getState;
+  const { data, timeframe, loading, setTimeframe, reset: resetAnalysisStore } = useWalletAnalysisStore();
+  const { activePositionData, assetFilter, setAssetFilter, dateFilter, setDateFilter, isHistoryLoading, reset: resetPortfolioStore } = useWalletPortfolioStore();
   useWalletAnalysis(walletAddress ?? undefined, blockchain ?? undefined);
 
   const [activeTab, setActiveTab] = React.useState<typeof TABS[number]>("Open Trades");
@@ -173,11 +158,11 @@ export function WalletPortfolioModal() {
   const handleTimeframeChange = useCallback((newTimeframe: Timeframe) => {
     setIsCustomTimeframe(false);
     setCustomDateRange(null);
-    analysisActions().setTimeframe(newTimeframe);
+    setTimeframe(newTimeframe);
     // Convert timeframe to days for wallet history
     const timeframeDays = newTimeframe === '1d' ? 1 : newTimeframe === '7d' ? 7 : newTimeframe === '30d' ? 30 : 90;
     fetchWalletHistoryData(timeframeDays);
-  }, [fetchWalletHistoryData]);
+  }, [setTimeframe, fetchWalletHistoryData]);
 
   const handleCustomRangeSelect = useCallback((from: Date, to: Date) => {
     setCustomDateRange({ from, to });
@@ -191,37 +176,37 @@ export function WalletPortfolioModal() {
     setActiveTab(tab);
     // Clear filters when switching away from Activity
     if (tab !== "Activity") {
-      portfolioActions().setAssetFilter(null);
-      portfolioActions().setDateFilter(null);
+      setAssetFilter(null);
+      setDateFilter(null);
     }
-  }, []);
+  }, [setAssetFilter, setDateFilter]);
 
   const handleCalendarDayClick = useCallback((date: Date) => {
     // Set date filter for the selected day (start of day to end of day)
     const from = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
     const to = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
-    portfolioActions().setDateFilter({ from, to });
-    portfolioActions().setAssetFilter(null); // Clear asset filter
+    setDateFilter({ from, to });
+    setAssetFilter(null); // Clear asset filter
     setActiveTab("Activity");
     setIsCalendarOpen(false);
     // Refetch activity with date range filter
     refetchActivity({ from: from.getTime(), to: to.getTime() });
-  }, [refetchActivity]);
+  }, [setDateFilter, setAssetFilter, refetchActivity]);
 
   const handleAssetClick = useCallback((asset: { address: string; chainId: string; name: string; symbol?: string; logo?: string; totalSupply?: number }) => {
     console.log('[Modal] handleAssetClick:', asset);
-    portfolioActions().setDateFilter(null); // Clear date filter when filtering by asset
-    portfolioActions().setAssetFilter(asset);
+    setDateFilter(null); // Clear date filter when filtering by asset
+    setAssetFilter(asset);
     setActiveTab("Activity");
-  }, []);
+  }, [setAssetFilter]);
 
   const handleCloseModal = useCallback(() => {
     justClosedRef.current = true; // Prevent re-open from stale URL params
     closeWebSocket(); // Close WebSocket when modal closes
-    portfolioActions().reset(); // Reset all portfolio data to avoid stale state
-    analysisActions().reset(); // Reset analysis data
+    resetPortfolioStore(); // Reset all portfolio data to avoid stale state
+    resetAnalysisStore(); // Reset analysis data
     closeWalletModal();
-  }, [closeWalletModal, closeWebSocket]);
+  }, [closeWalletModal, closeWebSocket, resetPortfolioStore, resetAnalysisStore]);
   
   React.useEffect(() => {
     if (nameInputRef.current && !isEditingName) {
@@ -677,7 +662,7 @@ export function WalletPortfolioModal() {
               <div className="ml-auto flex items-center gap-2 px-3">
                 {(assetFilter || dateFilter) && activeTab === "Activity" && (
                   <button
-                    onClick={() => { portfolioActions().setAssetFilter(null); portfolioActions().setDateFilter(null); refetchActivity(); }}
+                    onClick={() => { setAssetFilter(null); setDateFilter(null); refetchActivity(); }}
                     className="text-[10px] text-textTertiary hover:text-white transition-colors"
                   >
                     Clear filter

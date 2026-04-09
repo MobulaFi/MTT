@@ -25,6 +25,7 @@ const TIMEFRAMES: { key: Timeframe; label: string }[] = [
   { key: '15min', label: '15m' },
   { key: '1h', label: '1H' },
   { key: '6h', label: '6H' },
+  { key: '12h', label: '12H' },
   { key: '24h', label: '24H' },
 ];
 

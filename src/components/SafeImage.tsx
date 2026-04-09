@@ -37,14 +37,11 @@ export function validateImageUrl(url: string | null | undefined): string | null 
     return null;
   }
 
-  // Rewrite dead metacore.mobula.io domain to metadata.mobula.io
-  const rewritten = trimmed.replace('https://metacore.mobula.io/', 'https://metadata.mobula.io/');
-
   // If it's already a valid absolute URL, return it
-  if (rewritten.startsWith('http://') || rewritten.startsWith('https://')) {
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
     try {
-      new URL(rewritten);
-      return rewritten;
+      new URL(trimmed);
+      return trimmed;
     } catch {
       return null;
     }
@@ -93,7 +90,7 @@ export default function SafeImage({
   sizes,
   fill = false,
   className = '',
-  fallbackSrc = '/hawk.jpg',
+  fallbackSrc = '/mobula.svg',
   quality,
   priority = false,
   onLoad,

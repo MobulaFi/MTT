@@ -12,88 +12,78 @@ module.exports = {
     extend: {
       colors: {
         // Text
-        textPrimary: '#E8E8E8',
-        textSecondary: '#777777',
-        textTertiary: '#505050',
-
+        textPrimary: '#FCFCFC',      // main text
+        textSecondary: '#9B9B9B',    // secondary text
+        textTertiary: '#777A8C',     // tertiary or dim text
+      
         // Depth Layers
-        bgBase: '#000000',
-        bgDarkest: '#080808',
-        bgBaseAlt: '#0A0A0A',
-        bgOverlay: '#080808',
-        bgOverlayAlt: '#060606',
-        bgTableAlt: '#0F0F11',
-        bgTableHover: '#141416',
+        bgBase: '#030303',
+        bgDarkest: '#0F0F0F',        // smoother neutral black
+        bgBaseAlt: '#111111',        // alternate pure dark base
+        bgOverlay: '#0F1116',        // general overlay
+        bgOverlayAlt: '#0F1016',     // darker variant of overlay
+        bgTableAlt: '#181A21',       // lighter table row background
+        bgTableHover: '#1D2028',
 
+      
         // Core Background Layers
-        bgPrimary: '#0A0A0A',
-        bgSecondary: '#0D0D0F',
-        bgDeepAlt: '#0E0E10',
-        bgTertiary: '#161616',
-
+        bgPrimary: '#121319',        // primary background
+        bgSecondary: '#15161D',      // secondary background
+        bgDeepAlt: '#16181F',        // bluish variant (table rows, lists)
+        bgTertiary: '#20222B',       // mid-depth background (headers, panels)
+      
         // Neutral Layers
-        bgNeutral: '#121212',
-        bgNeutralDark: '#101010',
-
+        bgNeutral: '#1A1B23',        // balanced neutral
+        bgNeutralDark: '#1A1A1A',    // flat neutral fallback
+      
         // Surfaces & Components
-        bgSurface: '#111111',
-        bgSurfaceAlt: '#131313',
-        bgContainer: '#121212',
-        bgPanel: '#161616',
-        bgSectionAlt: '#1A1A1A',
-        bgCard: '#181818',
-        bgElevated: '#1C1C1C',
-        bgMuted: '#161616',
-        bgHighlight: '#222222',
-
+        bgSurface: '#1A1C23',        // surface elements
+        bgSurfaceAlt: '#1A1D28',     // alternate surface (hover)
+        bgContainer: '#1C1E27',      // container backgrounds
+        bgPanel: '#23252D',          // panels or modals
+        bgSectionAlt: '#2A2E39',     // cool-toned section background
+        bgCard: '#2C2C33',           // card backgrounds
+        bgElevated: '#2A2D35',       // elevated or popup surfaces
+        bgMuted: '#2A2A2A',          // muted/inactive background
+        bgHighlight: '#343439',      // hover or active highlight background
+      
         // Overlays & Tints
-        bgBackdrop: '#000000CC',
-        bgSuccessTint: '#0ECB8115',
-
+        bgBackdrop: '#0C0C10BF',     // semi-transparent dark backdrop
+        bgSuccessTint: '#18C72226',  // translucent green tint (success/hover)
+      
         // Grays & Whites
-        grayLight: '#B0B0B0',
-        grayMedium: '#707070',
-        grayDark: '#505050',
-        grayGhost: '#B0B0B0',
-        grayNeutral: '#666666',
-        grayBorder: '#999999',
-        graySlate: '#606060',
-        graySlateDark: '#454545',
-        whiteOverlay: '#FFFFFFE6',
-        whiteTranslucent: '#FFFFFF80',
-        grayExtraLight: '#C0C0C0',
-        grayCool: '#606060',
-
+        grayLight: '#C9C9CE',
+        grayMedium: '#848489',
+        grayDark: '#666666',
+        grayGhost: '#C8C9D1',
+        grayNeutral: '#797979',
+        grayBorder: '#CCCCCC',
+        graySlate: '#6B7280',
+        graySlateDark: '#555A66',
+        whiteOverlay: '#FFFFFFEB',   // slightly opaque white
+        whiteTranslucent: '#FFFFFF99',
+        grayExtraLight: '#E0E0E5',
+        grayCool: '#76767A',
+      
         // Status & Accent Colors
-        success: '#0ECB81',
-        error: '#EA3943',
+        success: '#18C722',
+        error: '#F45B5B',
         warning: '#FFD15C',
-        errorBright: '#FF3B3B',
+        errorBright: '#FF4D4D',
         accentRose: '#EC397A',
         accentPurple: '#8386FF',
-
+      
         // Borders
-        borderPrimary: '#1E1E1E',
-        borderDefault: '#161616',
-        borderSecondary: '#3A3A3A',
-        borderSurface: '#1E1E1E',
-        borderSuccess: '#0ECB81',
-        borderMuted: '#2A2A2A',
-        borderTertiary: '#1A1A1A',
-        borderDarkSlateGray: '#262626',
+        borderPrimary: '#343439',
+        borderDefault: '#22242D',
+        borderSecondary: '#6D6D72',
+        borderSurface: '#2A2D35',
+        borderSuccess: '#00C853',
+        borderMuted: '#444444',
+        borderTertiary: '#2C2E37',
+        borderDarkSlateGray: '#424349'
 
       },      
-      borderRadius: {
-        none: '0px',
-        sm: '2px',
-        DEFAULT: '2px',
-        md: '3px',
-        lg: '4px',
-        xl: '6px',
-        '2xl': '8px',
-        '3xl': '10px',
-        full: '9999px',
-      },
       fontFamily: {
         menlo: ['Menlo', 'monospace'],
         geist: ['Geist', 'monospace'],

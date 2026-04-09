@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export type Timeframe = '15min' | '1h' | '6h' | '24h';
+export type Timeframe = '15min' | '1h' | '6h' | '12h' | '24h';
 export type ActiveTab = 'byChain' | 'byDex' | 'byLaunchpad' | 'byPlatform';
 export type SortField = 'volumeUSD' | 'trades' | 'buys' | 'sells' | 'feesPaidUSD';
 type SortDirection = 'asc' | 'desc';

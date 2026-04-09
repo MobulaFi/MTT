@@ -4,8 +4,7 @@ import { FiSearch } from 'react-icons/fi';
 import { X, Clock, BarChart2, Layers, LayoutGrid, ChevronDown, Coins, PiggyBank, Wallet } from 'lucide-react';
 import { useSearchStore, type SortByType } from '@/store/searchStore';
 import { useWalletModalStore } from '@/store/useWalletModalStore';
-import { useNavigationStore } from '@/store/useNavigationStore';
-import { toBlockchain } from '@/lib/format';
+import { useRouter } from 'next/navigation';
 import { formatCryptoPrice, truncate } from '@mobula_labs/sdk';
 import { formatPriceWithPlaceholder } from '@/utils/tokenMetrics';
 import TimeAgo from '@/utils/TimeAgo';
@@ -176,8 +175,7 @@ export const SearchModal = ({
   const [showChainDropdown, setShowChainDropdown] = useState(false);
   const [selectedChain, setSelectedChain] = useState('All chains');
 
-  const navigateToToken = useNavigationStore((s) => s.navigateToToken);
-  const navigateToPair = useNavigationStore((s) => s.navigateToPair);
+  const router = useRouter();
   const resultsRef = useRef<HTMLDivElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const { openWalletModal } = useWalletModalStore();
@@ -334,16 +332,16 @@ export const SearchModal = ({
         if (!entry) return;
         if (entry.section === 'pools') {
           if (!entry.item?.poolAddress) return;
-          navigateToPair(entry.item.poolAddress, toBlockchain(entry.item.chainId), entry.item as unknown as Record<string, unknown>);
+          router.push(`/pair/${entry.item.chainId}/${entry.item.poolAddress}`);
         } else {
-          navigateToToken(entry.item.address, toBlockchain(entry.item.chainId), entry.item as unknown as Record<string, unknown>);
+          router.push(`/token/${entry.item.chainId}/${entry.item.address}`);
         }
         onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, combinedEntries, selectedIndex, isLoading, navigateToToken, navigateToPair, onClose, addressCheck.isAddress, handleOpenWalletAnalysis]);
+  }, [isOpen, combinedEntries, selectedIndex, isLoading, router, onClose, addressCheck.isAddress, handleOpenWalletAnalysis]);
 
   useEffect(() => {
     const activeItem = resultsRef.current?.querySelector<HTMLDivElement>(
@@ -595,7 +593,7 @@ export const SearchModal = ({
                         key={`${item.chainId}-${item.address}-token`}
                         data-index={globalIndex}
                         onClick={() => {
-                          navigateToToken(item.address, toBlockchain(item.chainId), item as unknown as Record<string, unknown>);
+                          router.push(`/token/${item.chainId}/${item.address}`);
                           onClose();
                         }}
                         className={`flex flex-col gap-3 px-3 py-4 border-b border-borderDefault transition-colors md:flex-row md:items-center md:justify-between ${
@@ -663,7 +661,7 @@ export const SearchModal = ({
                       key={`${item.chainId}-${item.poolAddress}-pool`}
                       data-index={globalIndex}
                       onClick={() => {
-                        navigateToPair(item.poolAddress, toBlockchain(item.chainId), item as unknown as Record<string, unknown>);
+                        router.push(`/pair/${item.chainId}/${item.poolAddress}`);
                         onClose();
                       }}
                       className={`flex items-center justify-between px-3 py-4 border-b border-borderDefault transition-colors ${

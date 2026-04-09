@@ -583,8 +583,6 @@ export default function MarketDetailPage() {
     }
 
     const loadChartData = async () => {
-      setInitialOHLCV([]);
-
       const limitByPeriod: Record<string, number> = {
         '1s':  500,
         '5s':  500,

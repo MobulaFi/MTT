@@ -28,7 +28,7 @@ interface DetailRowProps {
 
 export function SwapQuoteModal() {
   const { quote, isLoading, error, isModalOpen, closeModal, setLoading, setError } = useSwapQuoteStore();
-  const { buyAmount, tradingMode } = useTradingPanelStore();
+  const { buyAmount } = useTradingPanelStore();
   const { baseToken } = useTradingDataStore();
   const [showMore, setShowMore] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -91,7 +91,7 @@ export function SwapQuoteModal() {
 
     try {
       const chainId = baseToken.blockchain;
-      await executeTransaction(quote as SwapQuoteResponse, chainId, tradingMode as 'buy' | 'sell');
+      await executeTransaction(quote as SwapQuoteResponse, chainId);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to execute swap';
       setError(errorMessage);
@@ -332,7 +332,7 @@ export function SwapQuoteModal() {
                 {isLoading ? (
                   <>
                     <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" />
-                    <span className="text-sm sm:text-base">Swapping...</span>
+                    <span className="text-sm sm:text-base">Signing transaction...</span>
                   </>
                 ) : (
                   'Swap'

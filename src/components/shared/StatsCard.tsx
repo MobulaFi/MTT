@@ -313,7 +313,7 @@ function BondingProgress({ info }: { info: NonNullable<StatsCardData['bondingInf
 }
 
 
-export type TimeframeKey = '5min' | '1h' | '6h' | '24h';
+export type TimeframeKey = '5min' | '1h' | '6h' | '12h' | '24h';
 
 export type TimeframeStats = {
     trades: number;

@@ -22,7 +22,8 @@ export function TooltipButton({ tooltip, children, copyText, className, successM
       try {
         await navigator.clipboard.writeText(copyText);
         setCopied(true);
-        toast.success('Copied', {
+        toast.success(successMessage, {
+          duration: 2000,
           icon: <Check className="w-4 h-4 text-success" />,
         });
       } catch (error) {

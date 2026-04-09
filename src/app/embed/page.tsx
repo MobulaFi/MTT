@@ -25,6 +25,8 @@ function EmbedPageContent() {
     chartHeight,
     showSymbol,
     showGridLines,
+    from,
+    to,
     setEmbedType,
     setChain,
     setAddress,
@@ -37,6 +39,8 @@ function EmbedPageContent() {
     setChartHeight,
     setShowSymbol,
     setShowGridLines,
+    setFrom,
+    setTo,
   } = useEmbedGeneratorStore();
 
   const { chains, loading: chainsLoading } = useChainsAndProtocols('new-pairs');
@@ -52,7 +56,11 @@ function EmbedPageContent() {
     { value: '1minute', label: '1m' },
     { value: '5minute', label: '5m' },
     { value: '15minute', label: '15m' },
+
+    { value: '30minute', label: '30m' },
     { value: '1hour', label: '1h' },
+    { value: '4hour', label: '4h' },
+    { value: '12hour', label: '12h' },
     { value: '1day', label: '1d' },
     { value: '1week', label: '1w' },
     { value: '1month', label: '1M' },
@@ -338,7 +346,7 @@ function EmbedPageContent() {
     setShowThemeDropdown(false);
     // Update bgColor based on theme
     const themeColors: Record<EmbedTheme, string> = {
-      Navy: '#0A0A0A',
+      Navy: '#121319',
       Frog: '#0F1010',
       Abyss: '#070D13',
       Light: '#FFFFFF',
@@ -392,17 +400,23 @@ function EmbedPageContent() {
     }
     url.searchParams.set('show_symbol', showSymbol ? '1' : '0');
     url.searchParams.set('show_grid_lines', showGridLines ? '1' : '0');
-    
+    if (from) {
+      url.searchParams.set('from', from);
+    }
+    if (to) {
+      url.searchParams.set('to', to);
+    }
+
     return url.toString();
-  }, [embedType, chain, address, resolution, theme, bgColor, candleUpColor, candleDownColor, showSymbol, showGridLines]);
+  }, [embedType, chain, address, resolution, theme, bgColor, candleUpColor, candleDownColor, showSymbol, showGridLines, from, to]);
 
   // Generate iframe code
   const iframeCode = useMemo(() => {
     if (!iframeUrl) return '';
     
     return `<iframe
-  id="hawk-chart-embed"
-  title="Hawk Chart Embed"
+  id="mobula-chart-embed"
+  title="Mobula Chart Embed"
   src="${iframeUrl}"
   frameborder="0"
   allow="clipboard-write"
@@ -416,10 +430,14 @@ function EmbedPageContent() {
     
     try {
       await navigator.clipboard.writeText(iframeCode);
-      toast.success('Copied');
+      toast.success('Code copied to clipboard', {
+        duration: 2000,
+      });
     } catch (err) {
       console.error('Failed to copy:', err);
-      toast.error('Failed to copy');
+      toast.error('Failed to copy code', {
+        duration: 2000,
+      });
     }
   };
 
@@ -690,7 +708,7 @@ function EmbedPageContent() {
                       type="text"
                       value={candleUpColor}
                       onChange={(e) => setCandleUpColor(e.target.value)}
-                      placeholder="#0ECB81"
+                      placeholder="#18C722"
                       className={`flex-1 px-3 sm:px-4 py-2.5 sm:py-3 bg-bgContainer border rounded-md text-textPrimary text-xs sm:text-sm focus:outline-none focus:ring-2 font-menlo placeholder:text-textSecondary ${
                         isValidHexColor(candleUpColor)
                           ? 'border-borderDefault focus:ring-success focus:border-success'
@@ -699,13 +717,13 @@ function EmbedPageContent() {
                     />
                     <input
                       type="color"
-                      value={candleUpColor || '#0ECB81'}
+                      value={candleUpColor || '#18C722'}
                       onChange={(e) => setCandleUpColor(e.target.value)}
                       className="w-10 h-10 sm:w-12 sm:h-12 rounded cursor-pointer border border-borderDefault flex-shrink-0"
                     />
                     <div
                       className="w-10 h-10 sm:w-12 sm:h-12 rounded border border-borderDefault flex-shrink-0"
-                      style={{ backgroundColor: candleUpColor || '#0ECB81' }}
+                      style={{ backgroundColor: candleUpColor || '#18C722' }}
                     />
                   </div>
                 </div>
@@ -862,6 +880,43 @@ function EmbedPageContent() {
               </div>
             </div>
 
+            {/* Time Range */}
+            <div className="bg-bgOverlay border border-borderDefault rounded-lg p-4 sm:p-6">
+              <h2 className="text-xs sm:text-sm font-semibold text-textPrimary mb-3 sm:mb-4">
+                Time Range (optional)
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                <div>
+                  <label htmlFor="from" className="block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 text-textTertiary">
+                    From
+                  </label>
+                  <input
+                    id="from"
+                    type="number"
+                    value={from}
+                    onChange={(e) => setFrom(e.target.value)}
+                    placeholder="1704067200"
+                    className="w-full px-3 sm:px-4 py-2.5 sm:py-3 bg-bgContainer border border-borderDefault rounded-md text-textPrimary text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-success focus:border-success font-menlo placeholder:text-textSecondary"
+                  />
+                  <p className="text-[10px] sm:text-xs text-textTertiary mt-1">Unix timestamp (seconds)</p>
+                </div>
+                <div>
+                  <label htmlFor="to" className="block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 text-textTertiary">
+                    To
+                  </label>
+                  <input
+                    id="to"
+                    type="number"
+                    value={to}
+                    onChange={(e) => setTo(e.target.value)}
+                    placeholder="1706745600"
+                    className="w-full px-3 sm:px-4 py-2.5 sm:py-3 bg-bgContainer border border-borderDefault rounded-md text-textPrimary text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-success focus:border-success font-menlo placeholder:text-textSecondary"
+                  />
+                  <p className="text-[10px] sm:text-xs text-textTertiary mt-1">Unix timestamp (seconds)</p>
+                </div>
+              </div>
+            </div>
+
             {/* Step 4: Chart Size */}
             <div className="bg-bgOverlay border border-borderDefault rounded-lg p-4 sm:p-6">
               <h2 className="text-xs sm:text-sm font-semibold text-textPrimary mb-3 sm:mb-4">
@@ -905,8 +960,8 @@ function EmbedPageContent() {
             <div className="bg-bgOverlay border border-borderDefault rounded-lg p-4 sm:p-6">
               <h3 className="text-xs sm:text-sm font-semibold text-textPrimary mb-2">Notes</h3>
               <p className="text-xs sm:text-sm text-textSecondary leading-relaxed">
-                You can use charts for multiple tokens by replacing the Hawk URL with your pool or token address.
-                More embed options are available in Hawk by clicking &quot;Share&quot; then &quot;Embed Charts&quot;.
+                You can use charts for multiple tokens by replacing the Mobula URL with your pool or token address.
+                More embed options are available in Mobula by clicking &quot;Share&quot; then &quot;Embed Charts&quot;.
               </p>
             </div>
           </div>

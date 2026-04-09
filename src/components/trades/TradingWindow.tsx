@@ -4,26 +4,31 @@ import { createPortal } from 'react-dom';
 import { ChevronDown, Settings, Minus, X, Maximize2, Minimize2, Grip, ChevronUp } from 'lucide-react';
 import { useTradingPanelStore } from '@/store/useTradingPanelStore';
 import { SettingsModal } from './SettingsModal';
+import { SwapQuoteModal } from './SwapQuoteModal';
 import { ProTab } from './ProTab';
 import { useDragAndDrop } from '@/hooks/trading/useDragAndDrop';
 import type { TradingWindowProps } from '@/types/trading';
 
 export function TradingWindow({ className }: TradingWindowProps) {
-  // Individual selectors — only re-render when these specific values change
-  const isMinimized = useTradingPanelStore((s) => s.isMinimized);
-  const isCollapsed = useTradingPanelStore((s) => s.isCollapsed);
-  const isFloating = useTradingPanelStore((s) => s.isFloating);
-  const windowPosition = useTradingPanelStore((s) => s.windowPosition);
-
-  // Actions via getState() — stable references, no re-renders
-  const actions = useTradingPanelStore.getState;
+  const {
+    isMinimized,
+    isCollapsed,
+    isFloating,
+    windowPosition,
+    setSettingsOpen,
+    setMinimized,
+    setCollapsed,
+    setFloating,
+    setWindowPosition,
+    setIsDragging,
+  } = useTradingPanelStore();
 
   const { windowRef, isDragging, handleMouseDown } = useDragAndDrop({
     position: windowPosition,
     isFloating,
-    onPositionChange: (pos) => actions().setWindowPosition(pos),
-    onDragStart: () => actions().setIsDragging(true),
-    onDragEnd: () => actions().setIsDragging(false),
+    onPositionChange: setWindowPosition,
+    onDragStart: () => setIsDragging(true),
+    onDragEnd: () => setIsDragging(false),
   });
 
   const windowContent = (
@@ -39,7 +44,7 @@ export function TradingWindow({ className }: TradingWindowProps) {
         </div>
         <div>
           <button
-            onClick={() => actions().setSettingsOpen(true)}
+            onClick={() => setSettingsOpen(true)}
             className="p-1.5 hover:bg-bgTertiary rounded transition text-grayGhost hover:text-textPrimary"
             aria-label="Settings"
           >
@@ -48,7 +53,7 @@ export function TradingWindow({ className }: TradingWindowProps) {
 
           {!isFloating && (
             <button
-              onClick={() => actions().setFloating(true)}
+              onClick={() => setFloating(true)}
               className="p-1.5 hover:bg-bgTertiary rounded transition text-grayGhost hover:text-textPrimary"
               aria-label="Float window"
             >
@@ -58,7 +63,7 @@ export function TradingWindow({ className }: TradingWindowProps) {
 
           {isFloating && (
             <button
-              onClick={() => actions().setMinimized(!isMinimized)}
+              onClick={() => setMinimized(!isMinimized)}
               className="p-1.5 hover:bg-bgTertiary rounded transition text-grayGhost hover:text-textPrimary"
               aria-label={isMinimized ? 'Expand' : 'Minimize'}
             >
@@ -67,7 +72,7 @@ export function TradingWindow({ className }: TradingWindowProps) {
           )}
 
           <button
-            onClick={() => actions().setCollapsed(!isCollapsed)}
+            onClick={() => setCollapsed(!isCollapsed)}
             className="p-1.5 hover:bg-bgTertiary rounded transition text-grayGhost hover:text-textPrimary"
             aria-label={isCollapsed ? 'Expand' : 'Collapse'}
           >
@@ -81,7 +86,7 @@ export function TradingWindow({ className }: TradingWindowProps) {
 
           {isFloating && (
             <button
-              onClick={() => actions().setFloating(false)}
+              onClick={() => setFloating(false)}
               className="p-1.5 hover:bg-bgTertiary rounded transition text-grayGhost hover:text-textPrimary"
               aria-label="Close floating window"
             >
@@ -106,6 +111,7 @@ export function TradingWindow({ className }: TradingWindowProps) {
           {windowContent}
         </div>
         <SettingsModal />
+        <SwapQuoteModal />
       </>
     );
   }
@@ -131,6 +137,7 @@ export function TradingWindow({ className }: TradingWindowProps) {
       <>
         {createPortal(floatingWindow, document.body)}
         <SettingsModal />
+        <SwapQuoteModal />
       </>
     );
   }
@@ -138,6 +145,7 @@ export function TradingWindow({ className }: TradingWindowProps) {
   return (
     <>
       <SettingsModal />
+      <SwapQuoteModal />
     </>
   );
 }

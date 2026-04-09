@@ -1,4 +1,4 @@
-export type EmbedResolution = '1s' | '5s' | '15s' | '30s' | '1minute' | '5minute' | '15minute' | '1hour' | '1day' | '1week' | '1month';
+export type EmbedResolution = '1s' | '5s' | '15s' | '30s' | '1minute' | '5minute' | '15minute' | '30minute' | '1hour' | '4hour' | '12hour' | '1day' | '1week' | '1month';
 export type EmbedChartType = 'price' | 'mc' | 'volume';
 export type EmbedTheme = 'Navy' | 'Frog' | 'Abyss' | 'Light';
 
@@ -21,6 +21,8 @@ export interface EmbedConfig {
   candleDownColor?: string;
   showSymbol: boolean;
   showGridLines: boolean;
+  from?: number;
+  to?: number;
 }
 
 function isLightColor(hexColor: string): boolean {
@@ -46,16 +48,16 @@ function isLightColor(hexColor: string): boolean {
 
 const ALLOWED_RESOLUTIONS: EmbedResolution[] = [
   '1s', '5s', '15s', '30s',
-  '1minute', '5minute', '15minute',
-  '1hour', '1day', '1week', '1month'
+  '1minute', '5minute', '15minute', '30minute',
+  '1hour', '4hour', '12hour', '1day', '1week', '1month'
 ];
 const ALLOWED_CHART_TYPES: EmbedChartType[] = ['price', 'mc', 'volume'];
 const ALLOWED_THEMES: EmbedTheme[] = ['Navy', 'Frog', 'Abyss', 'Light'];
 
 const THEME_COLORS: Record<EmbedTheme, string> = {
-  Navy: '#0A0A0A',
-  Frog: '#0C0C0C',
-  Abyss: '#050505',
+  Navy: '#121319',
+  Frog: '#0F1010',
+  Abyss: '#070D13',
   Light: '#FFFFFF',
 };
 
@@ -89,7 +91,10 @@ export function mapResolutionToTradingView(resolution: EmbedResolution): string 
     '1minute': '1',
     '5minute': '5',
     '15minute': '15',
+    '30minute': '30',
     '1hour': '60',
+    '4hour': '240',
+    '12hour': '720',
     '1day': '1D',
     '1week': '1W',
     '1month': '1M',
@@ -141,6 +146,11 @@ export function validateEmbedParams(searchParams: URLSearchParams): EmbedConfig 
   const showGridLinesParam = searchParams.get('show_grid_lines');
   const showGridLines = showGridLinesParam === null ? true : showGridLinesParam === '1';
 
+  const fromParam = searchParams.get('from');
+  const toParam = searchParams.get('to');
+  const from = fromParam ? parseInt(fromParam, 10) : undefined;
+  const to = toParam ? parseInt(toParam, 10) : undefined;
+
   return {
     resolution,
     chartType,
@@ -150,6 +160,8 @@ export function validateEmbedParams(searchParams: URLSearchParams): EmbedConfig 
     candleDownColor,
     showSymbol,
     showGridLines,
+    from: from && !isNaN(from) ? from : undefined,
+    to: to && !isNaN(to) ? to : undefined,
   };
 }
 

@@ -2,11 +2,7 @@
 
 import { useMemo, useCallback, useEffect, useRef, useState } from 'react';
 import { Liveline } from 'liveline';
-
-interface WindowOption {
-  label: string;
-  secs: number;
-}
+import type { WindowOption } from 'liveline';
 import { useThemeStore } from '@/store/useThemeStore';
 
 interface OHLCVCandle {
@@ -32,6 +28,7 @@ export const CHART_WINDOWS: Array<WindowOption & { period: ChartPeriod }> = [
   { label: '5m',  secs: 300,    period: '1s'  },
   { label: '1h',  secs: 3600,   period: '1m'  },
   { label: '6h',  secs: 21600,  period: '5m'  },
+  { label: '12h', secs: 43200,  period: '15m' },
   { label: '1d',  secs: 86400,  period: '15m' },
   { label: '1w',  secs: 604800, period: '1h'  },
 ];
@@ -150,7 +147,7 @@ export function LivelineChart({ candles, latestPrice, trades = [], activeSecs, o
     const spawned: FloatingLabel[] = newTrades.map((t, i) => ({
       id: t.tradeId,
       text: `${t.side === 'buy' ? '+' : '-'} ${formatUSD(t.amountUSD)}`,
-      color: t.side === 'buy' ? successColor : '#EA3943',
+      color: t.side === 'buy' ? successColor : '#F45B5B',
       startTime: now + i * 80, // stagger bursts by 80ms each
     }));
 

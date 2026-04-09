@@ -12,8 +12,6 @@ import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { usePathname } from "next/navigation";
-import { useRecentTradesStore, type RecentTrade } from "@/store/useRecentTradesStore";
-import { useWalletConnectionStore } from "@/store/useWalletConnectionStore";
 
 const truncateAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 
@@ -322,25 +320,30 @@ const getTradeDirection = (action: SwapAction): "buy" | "sell" | "unknown" => {
     return "unknown";
 };
 
-// Calculate market cap AT TIME OF TRADE from price * totalSupply for the base token
-const getBaseTokenMarketCap = (action: SwapAction & {
-    swapPriceUsdTokenIn?: number;
+// Calculate market cap from price * totalSupply for the base token
+const getBaseTokenMarketCap = (action: SwapAction & { 
+    swapPriceUsdTokenIn?: number; 
     swapPriceUsdTokenOut?: number;
     swapAmountIn?: number;
     swapAmountOut?: number;
     swapAmountUsd?: number;
 }): number | undefined => {
     if (!action) return undefined;
-
+    
     const baseAsset = getSwapBaseAsset(action);
     if (!baseAsset) return undefined;
-
+    
+    // Check marketCapUsd (from wallet activity schema)
+    if (baseAsset.marketCapUsd && baseAsset.marketCapUsd > 0) {
+        return baseAsset.marketCapUsd;
+    }
+    
     let price: number | undefined;
     let supply: number | undefined;
-
+    
     const isBaseIn = addressesMatch(baseAsset.contract, action.swapAssetIn?.contract);
     const isBaseOut = addressesMatch(baseAsset.contract, action.swapAssetOut?.contract);
-
+    
     if (isBaseIn) {
         price = action.swapPriceUsdTokenIn;
         supply = action.swapAssetIn?.totalSupply;
@@ -354,17 +357,11 @@ const getBaseTokenMarketCap = (action: SwapAction & {
             price = action.swapAmountUsd / action.swapAmountOut;
         }
     }
-
-    // Prefer price * supply (mcap at time of trade)
+    
     if (price && supply && price > 0 && supply > 0) {
         return price * supply;
     }
-
-    // Fallback to marketCapUsd from API (current mcap) only if we can't compute historical
-    if (baseAsset.marketCapUsd && baseAsset.marketCapUsd > 0) {
-        return baseAsset.marketCapUsd;
-    }
-
+    
     return undefined;
 };
 
@@ -448,21 +445,18 @@ interface WalletActivityPositionProps {
 }
 
 export function WalletActivityPosition({ hideDust = false, refetchActivity }: WalletActivityPositionProps) {
-    // Individual selectors — only re-render when these specific fields change
-    const walletActivity = useWalletPortfolioStore((s) => s.walletActivity);
-    const isActivityLoading = useWalletPortfolioStore((s) => s.isActivityLoading);
-    const assetFilter = useWalletPortfolioStore((s) => s.assetFilter);
-    const dateFilter = useWalletPortfolioStore((s) => s.dateFilter);
-    const filteredTrades = useWalletPortfolioStore((s) => s.filteredTrades);
-    const isFilteredTradesLoading = useWalletPortfolioStore((s) => s.isFilteredTradesLoading);
-    // Actions via getState()
-    const portfolioActions = useWalletPortfolioStore.getState;
-    const walletAddress = useWalletModalStore((s) => s.walletAddress);
-    const blockchain = useWalletModalStore((s) => s.blockchain);
-
-    // Recent trades from global store (for instant display before API catches up)
-    const recentTrades = useRecentTradesStore((s) => s.trades);
-    const myAddress = useWalletConnectionStore((s) => s.solanaAddress || s.evmAddress);
+    const { 
+        walletActivity, 
+        isActivityLoading, 
+        assetFilter, 
+        setAssetFilter,
+        dateFilter,
+        filteredTrades,
+        isFilteredTradesLoading,
+        setFilteredTrades,
+        setFilteredTradesLoading,
+    } = useWalletPortfolioStore();
+    const { walletAddress, blockchain } = useWalletModalStore();
     const pathname = usePathname();
     const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
     const [priceMode, setPriceMode] = useState<Record<number, "base" | "quote">>({});
@@ -475,39 +469,7 @@ export function WalletActivityPosition({ hideDust = false, refetchActivity }: Wa
 
     // Sorting state - works for both filtered and global modes
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-
-    // Fetched totalSupply for mcap calculation when not in API response
-    const [fetchedTotalSupply, setFetchedTotalSupply] = useState<number | null>(null);
-    const supplyFetchedForRef = useRef<string | null>(null);
-
-    // Fetch totalSupply when asset filter is set but supply is missing
-    useEffect(() => {
-        if (!assetFilter?.address) {
-            setFetchedTotalSupply(null);
-            supplyFetchedForRef.current = null;
-            return;
-        }
-        // Already have supply from filter or already fetched for this token
-        if (assetFilter.totalSupply || supplyFetchedForRef.current === assetFilter.address) return;
-
-        supplyFetchedForRef.current = assetFilter.address;
-        const fetchSupply = async () => {
-            try {
-                const res = await sdk.fetchTokenDetails({
-                    address: assetFilter.address,
-                    blockchain: assetFilter.chainId,
-                }) as { data?: Record<string, unknown> };
-                const supply = (res?.data?.circulatingSupply as number) || (res?.data?.totalSupply as number);
-                if (supply && supply > 0) {
-                    setFetchedTotalSupply(supply);
-                }
-            } catch {
-                // Ignore fetch errors
-            }
-        };
-        fetchSupply();
-    }, [assetFilter?.address, assetFilter?.chainId, assetFilter?.totalSupply]);
-
+    
     // Request ID ref for race condition prevention
     const tradesRequestIdRef = useRef(0);
 
@@ -517,7 +479,7 @@ export function WalletActivityPosition({ hideDust = false, refetchActivity }: Wa
         
         if (!assetFilter || !walletAddress) {
             console.log('[Activity] Missing required params, clearing filtered trades');
-            portfolioActions().setFilteredTrades(null);
+            setFilteredTrades(null);
             return;
         }
 
@@ -528,7 +490,7 @@ export function WalletActivityPosition({ hideDust = false, refetchActivity }: Wa
         const thisWallet = walletAddress;
 
         const fetchFilteredTrades = async () => {
-            portfolioActions().setFilteredTradesLoading(true);
+            setFilteredTradesLoading(true);
             try {
                 // Use assetFilter.chainId (from position data) which should be the correct format
                 const chainToUse = assetFilter.chainId || blockchain;
@@ -558,24 +520,23 @@ export function WalletActivityPosition({ hideDust = false, refetchActivity }: Wa
                 console.log('[Activity] Response:', response);
                 console.log('[Activity] Fetched trades:', response?.data?.length ?? 0);
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                portfolioActions().setFilteredTrades(response as any);
+                setFilteredTrades(response as any);
             } catch (err) {
                 // Only handle error if this is still the current request
                 if (thisRequestId === tradesRequestIdRef.current) {
                     console.error('Error fetching filtered trades:', err);
-                    portfolioActions().setFilteredTrades(null);
+                    setFilteredTrades(null);
                 }
             } finally {
                 // Only update loading state if this is still the current request
                 if (thisRequestId === tradesRequestIdRef.current) {
-                    portfolioActions().setFilteredTradesLoading(false);
+                    setFilteredTradesLoading(false);
                 }
             }
         };
 
         fetchFilteredTrades();
-    }, [assetFilter, walletAddress, blockchain, sortOrder]);
+    }, [assetFilter, walletAddress, blockchain, setFilteredTrades, setFilteredTradesLoading, sortOrder]);
 
     // Track if this is the initial mount to avoid unnecessary refetch
     const isInitialMount = useRef(true);
@@ -622,7 +583,7 @@ export function WalletActivityPosition({ hideDust = false, refetchActivity }: Wa
                 const baseSymbol = baseToken?.symbol ?? assetFilter.symbol ?? 'Unknown';
                 const baseName = baseToken?.name ?? assetFilter.name ?? baseSymbol;
                 const baseLogo = baseToken?.logo ?? assetFilter.logo ?? null;
-                const baseTotalSupply = baseToken?.totalSupply ?? assetFilter.totalSupply ?? fetchedTotalSupply ?? undefined;
+                const baseTotalSupply = baseToken?.totalSupply ?? assetFilter.totalSupply;
                 
                 // Quote token info directly from API response
                 const quoteToken = trade.quoteToken;
@@ -631,8 +592,9 @@ export function WalletActivityPosition({ hideDust = false, refetchActivity }: Wa
                 const quoteName = quoteToken?.name ?? quoteSymbol;
                 const quoteLogo = quoteToken?.logo ?? null;
                 
-                // Market cap AT TIME OF TRADE: use trade price * supply (not current marketCapUSD)
-                const marketCap = (trade.baseTokenPriceUSD && baseTotalSupply ? trade.baseTokenPriceUSD * baseTotalSupply : 0);
+                // Market cap from baseToken.marketCapUSD or calculate from price * totalSupply
+                const marketCap = baseToken?.marketCapUSD 
+                    || (trade.baseTokenPriceUSD && baseTotalSupply ? trade.baseTokenPriceUSD * baseTotalSupply : 0);
                 
                 // Use baseTokenAmount and baseTokenAmountUSD directly from API
                 const baseAmount = trade.baseTokenAmount;
@@ -741,68 +703,9 @@ export function WalletActivityPosition({ hideDust = false, refetchActivity }: Wa
                 return txTime >= fromTime && txTime <= toTime;
             });
         }
-
-        // Merge recent trades from global store (instant display before API catches up)
-        // Only for the user's own wallet
-        if (myAddress && walletAddress && myAddress.toLowerCase() === walletAddress.toLowerCase() && recentTrades.length > 0) {
-            // Collect existing txHashes for deduplication
-            const existingHashes = new Set(
-                result.map((tx: { txHash?: string }) => tx.txHash?.toLowerCase()).filter(Boolean)
-            );
-
-            // Convert recent trades to activity format and prepend non-duplicates
-            const recentEntries = recentTrades
-                .filter((rt: RecentTrade) => {
-                    // Skip if already in results (API caught up)
-                    if (existingHashes.has(rt.txHash.toLowerCase())) return false;
-                    // If asset filter is active, only show trades for the filtered token
-                    if (assetFilter && rt.tokenAddress.toLowerCase() !== assetFilter.address.toLowerCase()) return false;
-                    return true;
-                })
-                .map((rt: RecentTrade) => {
-                    const isBuy = rt.direction === 'buy';
-                    return {
-                        txHash: rt.txHash,
-                        chainId: rt.chainId,
-                        txDateIso: new Date(rt.timestamp).toISOString(),
-                        _tradeType: rt.direction,
-                        _marketCap: undefined,
-                        _baseToken: { symbol: rt.tokenSymbol, name: rt.tokenName, logo: rt.tokenLogo },
-                        _isRecentTrade: true,
-                        actions: [{
-                            model: 'swap',
-                            swapAssetIn: {
-                                symbol: isBuy ? rt.tokenSymbol : rt.quoteSymbol,
-                                name: isBuy ? rt.tokenName : rt.quoteName,
-                                logo: isBuy ? rt.tokenLogo : rt.quoteLogo,
-                                contract: isBuy ? rt.tokenAddress : rt.quoteAddress,
-                            },
-                            swapAssetOut: {
-                                symbol: isBuy ? rt.quoteSymbol : rt.tokenSymbol,
-                                name: isBuy ? rt.quoteName : rt.tokenName,
-                                logo: isBuy ? rt.quoteLogo : rt.tokenLogo,
-                                contract: isBuy ? rt.quoteAddress : rt.tokenAddress,
-                            },
-                            swapAmountIn: isBuy ? rt.amountOut : rt.amountIn,
-                            swapAmountOut: isBuy ? rt.amountIn : rt.amountOut,
-                            swapAmountUsd: rt.amountUsd,
-                            swapPriceUsdTokenIn: isBuy ? rt.priceUsd : 0,
-                            swapPriceUsdTokenOut: isBuy ? 0 : rt.priceUsd,
-                            swapBaseAddress: rt.tokenAddress,
-                            _baseTokenAmount: isBuy ? rt.amountOut : rt.amountIn,
-                            _baseTokenAmountUSD: rt.amountUsd,
-                        }],
-                    };
-                });
-
-            if (recentEntries.length > 0) {
-                // Prepend recent trades (newest first)
-                result = [...recentEntries, ...result];
-            }
-        }
-
+        
         return result;
-    }, [assetFilter, filteredTrades, walletActivity?.data, hideDust, dateFilter, fetchedTotalSupply, recentTrades, myAddress, walletAddress]);
+    }, [assetFilter, filteredTrades, walletActivity?.data, hideDust, dateFilter]);
 
     const toggleRow = useCallback((index: number) => {
         setExpandedRows((prev) => {
@@ -908,7 +811,7 @@ export function WalletActivityPosition({ hideDust = false, refetchActivity }: Wa
                     <>
                         <span>No trades found for {assetFilter.name}</span>
                         <button
-                            onClick={() => portfolioActions().setAssetFilter(null)}
+                            onClick={() => setAssetFilter(null)}
                             className="flex items-center gap-1 text-xs text-success hover:underline"
                         >
                             <X size={12} />
@@ -1201,7 +1104,7 @@ export function WalletActivityPosition({ hideDust = false, refetchActivity }: Wa
                                                                         <ArrowUpDown
                                                                             size={12}
                                                                             className="flex-shrink-0 transition-colors"
-                                                                            color={priceMode[i] === "quote" ? "#0ECB81" : "#555555"}
+                                                                            color={priceMode[i] === "quote" ? "#18C722" : "#777A8C"}
                                                                         />
                                                                     </button>
                                                                 ) : (

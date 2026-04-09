@@ -54,8 +54,6 @@ type SdkMethod =
   | 'fetchSystemMetadata'
   | 'swapSend'
   | 'fetchWalletPosition'
-  | 'fetchMarketMultiData'
-  | 'fetchTokenFilters'
   | 'fetchMarketLighthouse';
 
 interface SdkRequest {
@@ -116,11 +114,8 @@ export async function POST(request: NextRequest) {
       case 'fetchMarketTokenHolders':
         response = await client.fetchMarketTokenHolders(params as Parameters<typeof client.fetchMarketTokenHolders>[0]);
         break;
-      case 'fetchMarketOHLCVHistory':
-        response = await client.fetchMarketOHLCVHistory(params as Parameters<typeof client.fetchMarketOHLCVHistory>[0]);
-        break;
-      case 'fetchTokenOHLCVHistory':
-        response = await client.fetchTokenOHLCVHistory(params as Parameters<typeof client.fetchTokenOHLCVHistory>[0]);
+      case 'fetchMarketHistoricalPairData':
+        response = await client.fetchMarketHistoricalPairData(params as Parameters<typeof client.fetchMarketHistoricalPairData>[0]);
         break;
       case 'fetchMarketOHLCVHistory':
         response = await client.fetchMarketOHLCVHistory(params as Parameters<typeof client.fetchMarketOHLCVHistory>[0]);
@@ -149,12 +144,6 @@ export async function POST(request: NextRequest) {
           '/api/2/wallet/position',
           params as Record<string, unknown>,
         );
-        break;
-      case 'fetchMarketMultiData':
-        response = await client.fetchMarketMultiData(params as Parameters<typeof client.fetchMarketMultiData>[0]);
-        break;
-      case 'fetchTokenFilters':
-        response = await client.fetchTokenFilters(params as Parameters<typeof client.fetchTokenFilters>[0]);
         break;
       case 'fetchMarketLighthouse':
         response = await client.request<typeof params, unknown>(

@@ -1,7 +1,7 @@
 // hooks/useTopTradersData.ts
 import { useEffect, useCallback } from 'react';
 import { useTopTradersStore } from '@/store/useTopTraderStore';
-import { getClientSdk, getRestBaseUrl, streams as streamWrapper } from '@/lib/sdkClient';
+import { streams as streamWrapper } from '@/lib/sdkClient';
 import type { TokenPositionsOutputResponse } from '@mobula_labs/types';
 
 interface UseTopTradersDataParams {
@@ -38,32 +38,8 @@ export function useTopTradersData({ tokenAddress, blockchain }: UseTopTradersDat
     setLoading(true);
 
     let cancelled = false;
-    let httpLoaded = false;
 
-    // 1. Fast HTTP fetch for immediate display
-    fetch(
-      `${getRestBaseUrl()}/api/2/token/trader-positions?address=${encodeURIComponent(tokenAddress)}&blockchain=${encodeURIComponent(blockchain)}&sortBy=realizedPnl&limit=100`,
-      {
-        headers: {
-          Authorization: getClientSdk().apiKey || '',
-        },
-      },
-    )
-      .then((res) => res.json())
-      .then((json: { data?: TokenPositionsOutputResponse[]; totalCount?: number }) => {
-        if (cancelled) return;
-        const traders = json.data || [];
-        if (traders.length > 0) {
-          httpLoaded = true;
-          setData({ data: traders, totalCount: json.totalCount ?? traders.length });
-          setLoading(false);
-        }
-      })
-      .catch(() => {
-        // HTTP failed — stream will provide data
-      });
-
-    // 2. WS stream for real-time updates
+    // Subscribe to holders stream with sortBy: 'realizedPnl' for top traders
     // Use the streams wrapper so it auto-routes to SSE in server mode
     const sub = streamWrapper.subscribe(
       'holders',
@@ -89,9 +65,7 @@ export function useTopTradersData({ tokenAddress, blockchain }: UseTopTradersDat
         switch (type) {
           case 'init': {
             const holders = message.data?.holders || [];
-            if (!httpLoaded || holders.length > 0) {
-              setData({ data: holders, totalCount: holders.length });
-            }
+            setData({ data: holders, totalCount: holders.length });
             setLoading(false);
             break;
           }
@@ -134,9 +108,7 @@ export function useTopTradersData({ tokenAddress, blockchain }: UseTopTradersDat
       sub.unsubscribe();
       reset();
     };
-    // Only re-subscribe when token/blockchain change
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tokenAddress, blockchain]);
+  }, [tokenAddress, blockchain, reset, setData, setLoading, setError, upsertHolder, removeHolder]);
 
   const setFilter = useCallback(
     (key: keyof TopTradersFilters, value: unknown) => {

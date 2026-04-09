@@ -16,7 +16,8 @@ export default function CopyAddress({
       e.preventDefault();
   
       navigator.clipboard.writeText(value).then(() => {
-        toast.success('Copied', {
+        toast.success('Address copied to clipboard', {
+          duration: 2000,
           icon: <Check className="w-4 h-4 text-success" />,
         });
         setCopied(true);

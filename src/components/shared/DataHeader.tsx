@@ -45,7 +45,7 @@ export interface BaseHeaderData {
     twitter: string | null;
     website: string | null;
     telegram: string | null;
-    others: Record<string, unknown> | undefined;
+    others: Record<string, unknown> | null;
     uri?: string | undefined;
   };
   liquidityUSD?: number;
@@ -84,8 +84,8 @@ export function DataHeader({
   
   const title =
     primaryToken?.symbol
-      ? `${primaryToken.symbol} ${arrow} ${marketCapFormatted} | Hawk`
-      : 'Hawk';
+      ? `${primaryToken.symbol} ${arrow} ${marketCapFormatted} | Mobula`
+      : 'Mobula';
 
   const liquidityDisplayValue =
     liquidityUSD === undefined ? undefined : formatLiquidityWithPlaceholder(liquidityUSD);
@@ -283,7 +283,7 @@ export function DataHeader({
                               <td className="px-4 py-2 w-[140px]">
                                 <div className="flex items-center gap-2">
                                   <Image
-                                    src={m.exchangeLogo || '/hawk.jpg'}
+                                    src={m.exchangeLogo || '/mobula.svg'}
                                     alt={m.exchange}
                                     width={16}
                                     height={16}

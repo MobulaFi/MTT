@@ -12,7 +12,6 @@ export interface Chain {
   id: string;
   name: string;
   label: string;
-  logo?: string;
 }
 
 export const ChainDropdown: React.FC<{
@@ -96,10 +95,7 @@ export const ChainDropdown: React.FC<{
         title={selectedChainLabel}
         className="flex items-center justify-between gap-2 px-3 py-1.5 text-[11px] font-semibold whitespace-nowrap transition-all border rounded bg-bgContainer/5 border-borderDarkSlateGray text-textSecondary hover:text-textPrimary hover:border-borderDefault w-full disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        <span className="truncate flex items-center gap-1.5">
-          {!loading && selectedChains.length === 1 && chains.find(c => c.id === selectedChains[0])?.logo && (
-            <img src={chains.find(c => c.id === selectedChains[0])!.logo!} alt="" className="w-3.5 h-3.5 rounded-full flex-shrink-0" />
-          )}
+        <span className="truncate">
           {loading ? "Loading..." : displayLabel}
         </span>
 
@@ -186,13 +182,12 @@ export const ChainDropdown: React.FC<{
                       className="border-[#323542] data-[state=checked]:bg-success data-[state=checked]:border-success"
                     />
                   </div>
-
-                  {chain.logo && (
-                    <img src={chain.logo} alt="" className="w-4 h-4 rounded-full flex-shrink-0" />
-                  )}
-
+                  
                   <div className="flex-1 text-left min-w-0">
                     <div className="font-medium truncate">{chain.name}</div>
+                    <div className={`text-xs ${selectedChains.includes(chain.id) ? "text-success/70" : "text-textTertiary"}`}>
+                      {chain.id}
+                    </div>
                   </div>
                 </button>
               ))

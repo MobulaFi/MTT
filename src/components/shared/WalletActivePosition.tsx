@@ -1,20 +1,14 @@
 "use client";
 import React, { useState, useCallback, useMemo, useEffect } from "react";
 import Image from "next/image";
-import { ArrowLeftRight, ArrowUpDown, Loader2, X } from "lucide-react";
+import { ArrowLeftRight, ArrowUpDown } from "lucide-react";
 import { formatCryptoPrice, formatUSD, formatPureNumber } from "@mobula_labs/sdk";
 import { formatPriceWithPlaceholder } from "@/utils/tokenMetrics";
 import { useWalletPortfolioStore } from "@/store/useWalletPortfolioStore";
 import { useWalletModalStore } from "@/store/useWalletModalStore";
-import { useWalletConnectionStore } from "@/store/useWalletConnectionStore";
-import { useTradingPanelStore } from "@/store/useTradingPanelStore";
 import TimeAgo from "@/utils/TimeAgo";
-import { useNavigationStore } from "@/store/useNavigationStore";
-import { toBlockchain } from "@/lib/format";
+import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
-import { sdk } from "@/lib/sdkClient";
-import { useSwapTransaction } from "@/hooks/trading/useSwapTransaction";
-import type { SwapQuoteResponse } from "@/types/swap";
 
 // Token logo with first-letter fallback
 const TokenLogo = ({ logo, symbol, size = 20 }: { logo?: string | null; symbol?: string | null; size?: number }) => {
@@ -90,14 +84,6 @@ const calculateAvgMarketCap = (
     return null;
 };
 
-// Get native token address for a chain
-function getNativeTokenOut(chainId: string): string {
-    if (chainId.toLowerCase().includes('solana')) {
-        return 'So11111111111111111111111111111111111111112';
-    }
-    return '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
-}
-
 type SortField = "realizedPnl" | "unrealizedPnl" | "athMc" | "marketCap" | "trades" | "volume" | "avgBuyMc" | "avgSellMc" | "balance" | "opening" | "closing";
 type SortDirection = "asc" | "desc";
 
@@ -113,67 +99,12 @@ const SkeletonRow = ({ columns }: { columns: number }) => (
 );
 
 export function WalletActivePosition({ mode, onAssetClick, hideDust = false }: WalletActivePositionProps) {
-    const activePositionData = useWalletPortfolioStore((s) => s.activePositionData);
-    const isLoading = useWalletPortfolioStore((s) => s.isLoading);
-    const closeWalletModal = useWalletModalStore((s) => s.closeWalletModal);
-    const navigateToToken = useNavigationStore((s) => s.navigateToToken);
+    const { activePositionData, isLoading } = useWalletPortfolioStore();
+    const { closeWalletModal } = useWalletModalStore();
     const [showATL, setShowATL] = useState(false);
-    const [closingKey, setClosingKey] = useState<string | null>(null);
     // Default sort: Closed Trades by closing date (most recent first), others by realized PnL
     const [sortField, setSortField] = useState<SortField>(mode === "history" ? "closing" : "realizedPnl");
     const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-
-    // Check if modal wallet is user's own wallet
-    const modalWalletAddress = useWalletModalStore((s) => s.walletAddress);
-    const solanaAddress = useWalletConnectionStore((s) => s.solanaAddress);
-    const evmAddress = useWalletConnectionStore((s) => s.evmAddress);
-    const slippage = useTradingPanelStore((s) => s.slippage);
-    const { signAndSendTransaction } = useSwapTransaction();
-
-    const isOwnWallet = useMemo(() => {
-        if (!modalWalletAddress) return false;
-        const lower = modalWalletAddress.toLowerCase();
-        return lower === solanaAddress?.toLowerCase() || lower === evmAddress?.toLowerCase();
-    }, [modalWalletAddress, solanaAddress, evmAddress]);
-
-    const handleCloseTrade = useCallback(async (
-        e: React.MouseEvent,
-        pos: { token: { address: string; chainId: string; symbol?: string | null }; balance: number },
-        rowKey: string,
-    ) => {
-        e.stopPropagation();
-        if (closingKey) return; // Already closing another position
-
-        const walletAddress = modalWalletAddress;
-        if (!walletAddress) return;
-
-        setClosingKey(rowKey);
-        try {
-            const chainId = pos.token.chainId;
-            const tokenOut = getNativeTokenOut(chainId);
-
-            const quoteResponse = await sdk.fetchSwapQuote({
-                chainId,
-                tokenIn: pos.token.address,
-                tokenOut,
-                amount: pos.balance,
-                slippage,
-                walletAddress,
-            }) as SwapQuoteResponse;
-
-            if (!quoteResponse?.data) {
-                throw new Error(
-                    (quoteResponse as { error?: string })?.error || 'Failed to get quote'
-                );
-            }
-
-            await signAndSendTransaction(quoteResponse, chainId, 'sell');
-        } catch (err) {
-            console.error('[CloseTrade] Error:', err);
-        } finally {
-            setClosingKey(null);
-        }
-    }, [closingKey, modalWalletAddress, slippage, signAndSendTransaction]);
 
     // Update default sort when mode changes
     useEffect(() => {
@@ -352,7 +283,7 @@ export function WalletActivePosition({ mode, onAssetClick, hideDust = false }: W
 
     // Loading skeleton
     if (isLoading) {
-        const columnCount = mode === "active" ? (isOwnWallet ? 14 : 13) : mode === "history" ? 11 : 13;
+        const columnCount = mode === "active" ? 13 : mode === "history" ? 11 : 13;
         return (
             <div className="h-full flex flex-col">
                 <div className="flex-1 overflow-x-auto overflow-y-auto">
@@ -416,8 +347,7 @@ export function WalletActivePosition({ mode, onAssetClick, hideDust = false }: W
                                     </div>
                                 </th>
                                 <SortableHeader field="realizedPnl" className="min-w-[85px]">Realized</SortableHeader>
-                                <SortableHeader field="unrealizedPnl" className={`min-w-[85px] ${isOwnWallet ? '' : 'pr-4'}`}>Unrealized</SortableHeader>
-                                {isOwnWallet && <th className="min-w-[50px] pr-4 whitespace-nowrap"></th>}
+                                <SortableHeader field="unrealizedPnl" className="min-w-[85px] pr-4">Unrealized</SortableHeader>
                             </tr>
                         </thead>
                         <tbody>
@@ -434,13 +364,14 @@ export function WalletActivePosition({ mode, onAssetClick, hideDust = false }: W
                                         <td className="text-white pl-4">
                                             <div className="flex items-center gap-2 whitespace-nowrap">
                                                 <TokenLogo logo={pos.token.logo} symbol={pos.token.symbol ?? pos.token.name} size={20} />
-                                                <span
-                                                    className="cursor-pointer hover:underline underline-offset-2 max-w-[100px] truncate block"
+                                                <Link 
+                                                    href={`/token/${pos.token.chainId}/${pos.token.address}`} 
+                                                    className="hover:underline underline-offset-2 max-w-[100px] truncate block" 
                                                     title={pos.token.name ?? pos.token.symbol ?? ""}
-                                                    onClick={(e) => { e.stopPropagation(); closeWalletModal(); navigateToToken(pos.token.address, toBlockchain(pos.token.chainId), pos.token as unknown as Record<string, unknown>); }}
+                                                    onClick={(e) => { e.stopPropagation(); closeWalletModal(); }}
                                                 >
                                                     {pos.token.symbol ?? pos.token.name}
-                                                </span>
+                                                </Link>
                                             </div>
                                         </td>
                                         <td className="text-white">{formatPriceWithPlaceholder(pos.token.priceUSD)}</td>
@@ -465,24 +396,7 @@ export function WalletActivePosition({ mode, onAssetClick, hideDust = false }: W
                                         <td className="text-textTertiary"><TimeAgo timestamp={pos.lastDate} /></td>
                                         <td className="text-textTertiary">{athMc ? formatCryptoPrice(athMc) : "—"}</td>
                                         <td className={pos.realizedPnlUSD >= 0 ? "text-success" : "text-errorBright"}>{formatUSD(pos.realizedPnlUSD)}</td>
-                                        <td className={`${isOwnWallet ? '' : 'pr-4'} ${pos.unrealizedPnlUSD >= 0 ? "text-success" : "text-errorBright"}`}>{formatUSD(pos.unrealizedPnlUSD)}</td>
-                                        {isOwnWallet && (
-                                            <td className="pr-4">
-                                                <button
-                                                    onClick={(e) => handleCloseTrade(e, pos, `${pos.token.address}_${pos.token.chainId}`)}
-                                                    disabled={closingKey !== null}
-                                                    className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold bg-error/10 text-error hover:bg-error/20 transition-colors disabled:opacity-50 whitespace-nowrap"
-                                                    title="Sell 100% of this position"
-                                                >
-                                                    {closingKey === `${pos.token.address}_${pos.token.chainId}` ? (
-                                                        <Loader2 size={10} className="animate-spin" />
-                                                    ) : (
-                                                        <X size={10} />
-                                                    )}
-                                                    Close
-                                                </button>
-                                            </td>
-                                        )}
+                                        <td className={`pr-4 ${pos.unrealizedPnlUSD >= 0 ? "text-success" : "text-errorBright"}`}>{formatUSD(pos.unrealizedPnlUSD)}</td>
                                     </tr>
                                 );
                             })}
@@ -539,13 +453,14 @@ export function WalletActivePosition({ mode, onAssetClick, hideDust = false }: W
                                         <td className="text-white pl-4">
                                             <div className="flex items-center gap-2 whitespace-nowrap">
                                                 <TokenLogo logo={pos.token.logo} symbol={pos.token.symbol ?? pos.token.name} size={20} />
-                                                <span
-                                                    className="cursor-pointer hover:underline underline-offset-2 max-w-[100px] truncate block"
+                                                <Link 
+                                                    href={`/token/${pos.token.chainId}/${pos.token.address}`} 
+                                                    className="hover:underline underline-offset-2 max-w-[100px] truncate block" 
                                                     title={pos.token.name ?? pos.token.symbol ?? ""}
-                                                    onClick={(e) => { e.stopPropagation(); closeWalletModal(); navigateToToken(pos.token.address, toBlockchain(pos.token.chainId), pos.token as unknown as Record<string, unknown>); }}
+                                                    onClick={(e) => { e.stopPropagation(); closeWalletModal(); }}
                                                 >
                                                     {pos.token.symbol ?? pos.token.name}
-                                                </span>
+                                                </Link>
                                             </div>
                                         </td>
                                         <td className="text-white">{formatPriceWithPlaceholder(pos.token.priceUSD)}</td>
@@ -625,13 +540,14 @@ export function WalletActivePosition({ mode, onAssetClick, hideDust = false }: W
                                 <td className="text-white pl-4">
                                     <div className="flex items-center gap-2 whitespace-nowrap">
                                         <TokenLogo logo={pos.token.logo} symbol={pos.token.symbol ?? pos.token.name} size={20} />
-                                        <span
-                                            className="cursor-pointer hover:underline underline-offset-2 max-w-[90px] truncate block"
+                                        <Link
+                                            href={`/token/${pos.token.chainId}/${pos.token.address}`}
+                                                className="hover:underline underline-offset-2 max-w-[90px] truncate block" 
                                             title={pos.token.name ?? pos.token.symbol ?? ""}
-                                                onClick={(e) => { e.stopPropagation(); closeWalletModal(); navigateToToken(pos.token.address, toBlockchain(pos.token.chainId), pos.token as unknown as Record<string, unknown>); }}
+                                                onClick={(e) => { e.stopPropagation(); closeWalletModal(); }}
                                             >
                                                 {pos.token.symbol ?? pos.token.name}
-                                            </span>
+                                            </Link>
                                         </div>
                                     </td>
                                     <td className="text-white">{formatPriceWithPlaceholder(pos.token.priceUSD)}</td>

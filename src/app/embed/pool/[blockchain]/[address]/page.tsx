@@ -18,7 +18,7 @@ export const fetchCache = 'force-no-store';
 // Security headers for embed routes
 export async function generateMetadata({ params }: EmbedPoolPageProps) {
   return {
-    title: 'Pool Chart Embed - Hawk',
+    title: 'Pool Chart Embed - Mobula',
     robots: 'noindex, nofollow',
   };
 }
@@ -75,7 +75,7 @@ export default async function EmbedPoolPage({ params, searchParams }: EmbedPoolP
 
   return (
     <EmbedLayout config={embedConfig}>
-      <div style={{ width: '100%', height: '100vh', backgroundColor: embedConfig.bgColor || '#0A0A0A', position: 'relative' }}>
+      <div style={{ width: '100%', height: '100vh', backgroundColor: embedConfig.bgColor || '#121319', position: 'relative' }}>
         <div style={{ width: '100%', height: 'calc(100% - 36px)' }}>
         <TradingViewChart
           baseAsset={baseAsset}
@@ -88,6 +88,8 @@ export default async function EmbedPoolPage({ params, searchParams }: EmbedPoolP
           deployer={marketData.base.deployer ?? undefined}
           showSymbol={embedConfig.showSymbol}
           showGridLines={embedConfig.showGridLines}
+          initialFrom={embedConfig.from}
+          initialTo={embedConfig.to}
         />
         </div>
         <EmbedBranding bgColor={embedConfig.bgColor} />

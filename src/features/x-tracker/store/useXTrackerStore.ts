@@ -20,12 +20,6 @@ export interface XTrackerStoreState {
   windowPosition: { x: number; y: number };
   isDragging: boolean;
 
-  // Quick buy settings
-  quickBuyEnabled: boolean;
-  quickBuyAmountSol: number;
-  quickBuyPresets: number[];
-  soundEnabled: boolean;
-
   addTrackedUser: (username: string, profile: XUserProfile | null) => void;
   removeTrackedUser: (username: string) => void;
   setTrackedUsers: (users: TrackedUser[]) => void;
@@ -42,25 +36,13 @@ export interface XTrackerStoreState {
   setMinimized: (minimized: boolean) => void;
   setWindowPosition: (position: { x: number; y: number }) => void;
   setIsDragging: (isDragging: boolean) => void;
-
-  setQuickBuyEnabled: (enabled: boolean) => void;
-  setQuickBuyAmountSol: (amount: number) => void;
-  setQuickBuyPresets: (presets: number[]) => void;
-  setSoundEnabled: (enabled: boolean) => void;
 }
 
 export const useXTrackerStore = create<XTrackerStoreState>()(
   devtools(
     persist(
       immer((set) => ({
-        trackedUsers: [
-          { username: 'mert', profile: null, addedAt: Date.now() },
-          { username: 'zachXBT', profile: null, addedAt: Date.now() },
-          { username: 'elonmusk', profile: null, addedAt: Date.now() },
-          { username: 'sacha_io', profile: null, addedAt: Date.now() },
-          { username: 'mobulaio', profile: null, addedAt: Date.now() },
-          { username: 'NBMSacha', profile: null, addedAt: Date.now() },
-        ],
+        trackedUsers: [],
         tweets: [],
         loading: false,
         error: null,
@@ -70,11 +52,6 @@ export const useXTrackerStore = create<XTrackerStoreState>()(
         isMinimized: false,
         windowPosition: { x: 50, y: 50 },
         isDragging: false,
-
-        quickBuyEnabled: true,
-        quickBuyAmountSol: 0.1,
-        quickBuyPresets: [0.1, 0.5, 1, 5],
-        soundEnabled: true,
 
         addTrackedUser: (username, profile) =>
           set((state) => {
@@ -154,26 +131,6 @@ export const useXTrackerStore = create<XTrackerStoreState>()(
           set((state) => {
             state.isDragging = isDragging;
           }),
-
-        setQuickBuyEnabled: (enabled) =>
-          set((state) => {
-            state.quickBuyEnabled = enabled;
-          }),
-
-        setQuickBuyAmountSol: (amount) =>
-          set((state) => {
-            state.quickBuyAmountSol = amount;
-          }),
-
-        setQuickBuyPresets: (presets) =>
-          set((state) => {
-            state.quickBuyPresets = presets;
-          }),
-
-        setSoundEnabled: (enabled) =>
-          set((state) => {
-            state.soundEnabled = enabled;
-          }),
       })),
       {
         name: 'x-tracker-storage',
@@ -181,10 +138,6 @@ export const useXTrackerStore = create<XTrackerStoreState>()(
           trackedUsers: state.trackedUsers,
           isFloating: state.isFloating,
           windowPosition: state.windowPosition,
-          quickBuyEnabled: state.quickBuyEnabled,
-          quickBuyAmountSol: state.quickBuyAmountSol,
-          quickBuyPresets: state.quickBuyPresets,
-          soundEnabled: state.soundEnabled,
         }),
       },
     ),

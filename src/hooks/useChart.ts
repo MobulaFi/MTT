@@ -1,7 +1,10 @@
 import { useCallback } from 'react';
+import { useChartStore } from '@/store/useChartStore';
 import type { ChartElement, ChartState } from '@/utils/Chart';
 
 export const useChartTools = () => {
+  const { chartLoaded, setIsChartReady } = useChartStore();
+
   const loadSavedTools = async (chart: any) => {
     return new Promise<void>((resolve) => {
       const savedState = localStorage.getItem('chartState');
@@ -9,6 +12,15 @@ export const useChartTools = () => {
       if (savedState) {
         try {
           const parsedState = JSON.parse(savedState);
+          
+          // Set symbol if available
+          if (typeof chart.setSymbol === 'function' && parsedState.symbol && parsedState.interval) {
+            try {
+              chart.setSymbol(parsedState.symbol, parsedState.interval);
+            } catch (_error) {
+              console.error('Error setting symbol:', _error);
+            }
+          }
 
           // Load studies
           const promises: Promise<void>[] = [];

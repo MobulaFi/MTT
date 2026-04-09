@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { usePathname } from 'next/navigation';
+import { useWalletConnectionStore } from '@/store/useWalletConnectionStore';
 
 export const MOBULA_TO_EVM_CHAIN_ID: Record<string, number> = {
   'evm:1': 1,
@@ -60,18 +61,32 @@ export function extractChainFromPath(pathname: string): string | null {
   return null;
 }
 
-// With Privy embedded wallets, auto-switch is not needed
 export function useAutoSwitchNetwork() {
   const pathname = usePathname();
+  const evmChainId = useWalletConnectionStore((state) => state.evmChain?.id ?? null);
+  const isEvmConnected = useWalletConnectionStore((state) => state.isEvmConnected);
+  const isSolanaConnected = useWalletConnectionStore((state) => state.isSolanaConnected);
+  const isConnected = isEvmConnected || isSolanaConnected;
+  const chainId = evmChainId;
 
   const currentMobulaChain = useMemo(() => {
     return pathname ? extractChainFromPath(pathname) : null;
   }, [pathname]);
 
+  const requiredChainId = useMemo(() => {
+    if (!currentMobulaChain) return null;
+    return MOBULA_TO_EVM_CHAIN_ID[currentMobulaChain] || null;
+  }, [currentMobulaChain]);
+
+  const isWrongNetwork = useMemo(() => {
+    if (!isConnected || !requiredChainId || !chainId) return false;
+    return chainId !== requiredChainId;
+  }, [isConnected, requiredChainId, chainId]);
+
   return {
     currentMobulaChain,
-    currentEvmChainId: null,
-    requiredChainId: null,
-    isWrongNetwork: false,
+    currentEvmChainId: chainId,
+    requiredChainId,
+    isWrongNetwork,
   };
 }

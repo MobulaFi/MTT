@@ -2,7 +2,6 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { sdk, streams } from '@/lib/sdkClient';
-import { prefetchMarkets } from '@/lib/prefetch';
 import type {
   Market,
 } from '@/types/trading';
@@ -90,7 +89,7 @@ export const useTradingStore = create<TradingState>()(
     fetchMarkets: async (address: string, blockchain: string) => {
       set({ isLoadingMarkets: true });
       try {
-        const response = await prefetchMarkets(address, blockchain) as { data?: any[] };
+        const response = await sdk.fetchTokenMarkets({ address, blockchain });
 
         if (response.data) {
           const markets = response.data.map((market: any) => ({

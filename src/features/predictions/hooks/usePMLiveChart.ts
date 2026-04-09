@@ -67,14 +67,10 @@ export function usePMLiveChart(options: UsePMLiveChartOptions) {
     onPriceUpdateRef.current = onPriceUpdate;
   }, [onPriceUpdate]);
 
-  // Reset candles when period changes (full chart reload on timeframe switch)
-  useEffect(() => {
-    setCandles([]);
-    setLatestPrice(null);
-    currentCandleRef.current = null;
-  }, [period]);
-
-  // Initialize with initial data (runs after period reset for API-backed periods)
+  // Replace candles atomically when new OHLCV data arrives (timeframe switch or
+  // initial load). We do NOT reset on bare `period` change — the old data stays
+  // visible until the new fetch resolves, preventing the empty-chart flash that
+  // made users think the first click was ignored.
   useEffect(() => {
     if (initialData.length > 0) {
       setCandles(initialData);

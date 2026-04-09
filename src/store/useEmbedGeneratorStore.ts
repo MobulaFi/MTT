@@ -19,6 +19,8 @@ interface EmbedGeneratorState {
   chartHeight: string;
   showSymbol: boolean;
   showGridLines: boolean;
+  from: string;
+  to: string;
 
   // Actions
   setEmbedType: (type: EmbedType) => void;
@@ -33,6 +35,8 @@ interface EmbedGeneratorState {
   setChartHeight: (height: string) => void;
   setShowSymbol: (show: boolean) => void;
   setShowGridLines: (show: boolean) => void;
+  setFrom: (from: string) => void;
+  setTo: (to: string) => void;
   reset: () => void;
 }
 
@@ -41,14 +45,16 @@ const defaultState = {
   chain: 'evm:56', // BNB Smart Chain (BSC)
   address: '0x59264f02D301281f3393e1385c0aEFd446Eb0F00',
   resolution: '1minute' as EmbedResolution,
-  theme: 'Navy' as EmbedTheme | '', // backward-compatible embed theme name
-  candleUpColor: '#0ECB81',
+  theme: 'Navy' as EmbedTheme | '',
+  candleUpColor: '#18C722',
   candleDownColor: '#EF4444',
-  bgColor: '#0A0A0A', // Navy theme default
+  bgColor: '#121319', // Navy theme default
   chartWidth: '100%',
   chartHeight: '600',
   showSymbol: true,
   showGridLines: true,
+  from: '',
+  to: '',
 };
 
 export const useEmbedGeneratorStore = create<EmbedGeneratorState>((set) => ({
@@ -66,5 +72,7 @@ export const useEmbedGeneratorStore = create<EmbedGeneratorState>((set) => ({
   setChartHeight: (height) => set({ chartHeight: height }),
   setShowSymbol: (show) => set({ showSymbol: show }),
   setShowGridLines: (show) => set({ showGridLines: show }),
+  setFrom: (from) => set({ from }),
+  setTo: (to) => set({ to }),
   reset: () => set(defaultState),
 }));

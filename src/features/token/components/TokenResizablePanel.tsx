@@ -18,10 +18,11 @@ import type { Transaction } from '@/features/pair/store/usePairTradeStore';
 import { useTradingData } from '@/hooks/useTradingData';
 import { useTradesPanelStore } from '@/store/useTradesPanelStore';
 import { useFilterModalStore } from '@/store/useFilterModalStore';
+import { useRenderCounter } from '@/utils/useRenderCounter';
 import { shallow } from 'zustand/shallow';
 
 interface TokenClientPanelsProps {
-  tokenData: TokenDetailsResponse['data'] | null;
+  tokenData: TokenDetailsResponse['data'];
   address: string;
   blockchain: string;
 }
@@ -98,7 +99,10 @@ function TokenResizablePanelsComponent({
   address,
   blockchain,
 }: TokenClientPanelsProps) {
-  // Use granular selectors to prevent unnecessary re-renders
+  // Render counter for diagnostics
+  useRenderCounter('TokenResizablePanels');
+
+  // 🔹 Hooks - Use granular selectors to prevent unnecessary re-renders
   // Only subscribe to what we actually need, not the entire store
   // Extract individual filter values to prevent re-renders when object reference changes
   const filterWallet = useFilterModalStore((s) => s.currentFilters.wallet);
@@ -124,7 +128,7 @@ function TokenResizablePanelsComponent({
     resetFilters();
   }, [address, blockchain, resetFilters]);
 
-  useCombinedHolders(tokenData?.address, blockchain, tokenData?.priceUSD ?? 0, tokenData?.totalSupply ?? 0);
+  useCombinedHolders(tokenData?.address, blockchain);
   // CRITICAL: Use subscription-only hook that doesn't subscribe to store state
   // This sets up WebSocket subscription but doesn't cause re-renders when trades update
   // TradesTable will subscribe to store directly for its own updates
@@ -152,35 +156,33 @@ function TokenResizablePanelsComponent({
   const currentWalletFilter = useMemo(() => currentFilters.wallet, [currentFilters.wallet]);
   
   const handleToggleDevFilter = useCallback(() => {
-    const isDevFilterActive = currentWalletFilter === tokenData?.deployer;
+    const isDevFilterActive = currentWalletFilter === tokenData.deployer;
     if (isDevFilterActive) {
       setFilters({ wallet: undefined });
-    } else if (tokenData?.deployer) {
+    } else if (tokenData.deployer) {
       setFilters({ wallet: tokenData.deployer });
     }
-  }, [currentWalletFilter, tokenData?.deployer, setFilters]);
+  }, [currentWalletFilter, tokenData.deployer, setFilters]);
 
   const handleOpenModal = useCallback(() => {
     openModal();
   }, [openModal]);
 
   // Use memoized wallet filter for stable comparison
-  const isDevFilterActive = currentWalletFilter === tokenData?.deployer;
-
-  const tokenAddress = tokenData?.address ?? address;
+  const isDevFilterActive = currentWalletFilter === tokenData.deployer;
 
   // Memoize table components to prevent re-creation
   const holdersTable = useMemo(() => (
-    <HoldersTable totalSupply={tokenData?.totalSupply} />
-  ), [tokenData?.totalSupply]);
+    <HoldersTable totalSupply={tokenData.totalSupply} />
+  ), [tokenData.totalSupply]);
 
   const topTradersTable = useMemo(() => (
     <TopTradersTable
       blockchain={blockchain}
-      tokenAddress={tokenAddress}
-      totalSupply={tokenData?.totalSupply ?? 0}
+      tokenAddress={tokenData.address}
+      totalSupply={tokenData.totalSupply ?? 0}
     />
-  ), [blockchain, tokenAddress, tokenData?.totalSupply]);
+  ), [blockchain, tokenData.address, tokenData.totalSupply]);
 
   // TradesTable subscribes to store internally - don't pass storeTrades prop
   // This prevents TokenResizablePanels from re-rendering when trades update
@@ -189,9 +191,9 @@ function TokenResizablePanelsComponent({
       pair={{ address: address, blockchain }}
       storeTrades={[]} // Empty array - TradesTable will use store directly
       isPair={false}
-      assetAddress={tokenAddress}
+      assetAddress={tokenData.address}
     />
-  ), [address, blockchain, tokenAddress]); // NO tradesHook.wsTrades dependency!
+  ), [address, blockchain, tokenData.address]); // NO tradesHook.wsTrades dependency!
 
   const devTokensTable = useMemo(() => (
     tokenData?.deployer ? (
@@ -228,7 +230,7 @@ function TokenResizablePanelsComponent({
         content: tradesTable,
         actions: (
           <TradesActions
-            deployer={tokenData?.deployer ?? undefined}
+            deployer={tokenData.deployer ?? undefined}
             isDevFilterActive={isDevFilterActive}
             onToggleTrades={handleToggleTrades}
             onToggleDevFilter={handleToggleDevFilter}
@@ -243,7 +245,7 @@ function TokenResizablePanelsComponent({
       },
       marketsLength > 0 && marketsTable && {
         value: 'markets',
-        label: `${tokenData?.symbol ?? ''} Markets`,
+        label: `${tokenData.symbol} Markets`,
         content: marketsTable,
       },
     ].filter(Boolean) as {
@@ -261,8 +263,8 @@ function TokenResizablePanelsComponent({
     tradesTable,
     devTokensTable,
     marketsTable,
-    tokenData?.deployer,
-    tokenData?.symbol,
+    tokenData.deployer,
+    tokenData.symbol,
     marketsLength,
     isDevFilterActive,
     currentWalletFilter,
@@ -272,18 +274,17 @@ function TokenResizablePanelsComponent({
     // REMOVED tradesHook.wsTrades - this was causing re-renders!
   ]);
 
-  // Use address prop as fallback so the chart can init before tokenData loads
+  // 🔹 Safe type for base asset - memoized with stable reference
   const baseAsset = useMemo(
     () => ({
-      address: tokenAddress,
-      asset: tokenAddress,
+      address: tokenData?.address,
+      asset: tokenData?.address,
       blockchain,
-      symbol: tokenData?.symbol || '',
-      priceUSD: tokenData?.priceUSD ?? 0,
+      symbol: tokenData?.symbol || '', // ensures type-safety
+      priceUSD: tokenData?.priceUSD ?? 0, // avoids undefined
       circulatingSupply: tokenData?.circulatingSupply ?? tokenData?.totalSupply ?? 0,
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tokenAddress, tokenData?.symbol, tokenData?.circulatingSupply, blockchain],
+    [tokenData?.address, tokenData?.symbol, tokenData?.priceUSD, tokenData?.circulatingSupply, tokenData?.totalSupply, blockchain],
   );
 
   const chartComponent = useMemo(() => (
@@ -301,9 +302,9 @@ function TokenResizablePanelsComponent({
       isPair={false}
       storeTrades={[]} // Empty - TradesTable uses store directly
       compact
-      assetAddress={tokenAddress}
+      assetAddress={tokenData.address}
     />
-  ), [address, blockchain, tokenAddress]); // NO tradesHook.wsTrades dependency!
+  ), [address, blockchain, tokenData.address]); // NO tradesHook.wsTrades dependency!
 
   // 🔹 Render
   return (

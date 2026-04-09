@@ -70,6 +70,7 @@ export const buildPair = (p: any): StatsCardData => ({
     { label: '5m', value: p.priceChange5minPercentage, key: '5min' },
     { label: '1h', value: p.priceChange1hPercentage, key: '1h' },
     { label: '6h', value: p.priceChange6hPercentage, key: '6h' },
+    { label: '12h', value: p.priceChange12hPercentage, key: '12h' },
     { label: '24h', value: p.priceChange24hPercentage, key: '24h' },
   ],
 
@@ -127,6 +128,7 @@ export const buildToken = (t: any, options: BuildTokenOptions = {}): StatsCardDa
     { label: '5m', value: t.priceChange5minPercentage ?? 0, key: '5min' },
     { label: '1h', value: t.priceChange1hPercentage ?? 0, key: '1h' },
     { label: '6h', value: t.priceChange6hPercentage ?? 0, key: '6h' },
+    { label: '12h', value: t.priceChange12hPercentage ?? 0, key: '12h' },
     { label: '24h', value: t.priceChange24hPercentage ?? 0, key: '24h' },
   ],
 

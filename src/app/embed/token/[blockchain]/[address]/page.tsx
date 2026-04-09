@@ -17,7 +17,7 @@ export const fetchCache = 'force-no-store';
 
 export async function generateMetadata({ params }: EmbedTokenPageProps) {
   return {
-    title: 'Token Chart Embed - Hawk',
+    title: 'Token Chart Embed - Mobula',
     robots: 'noindex, nofollow',
   };
 }
@@ -73,7 +73,7 @@ export default async function EmbedTokenPage({ params, searchParams }: EmbedToke
 
   return (
     <EmbedLayout config={embedConfig}>
-      <div style={{ width: '100%', height: '100vh', backgroundColor: embedConfig.bgColor || '#0A0A0A', position: 'relative' }}>
+      <div style={{ width: '100%', height: '100vh', backgroundColor: embedConfig.bgColor || '#121319', position: 'relative' }}>
         <div style={{ width: '100%', height: 'calc(100% - 36px)' }}>
         <TradingViewChart
           baseAsset={baseAsset}
@@ -86,6 +86,8 @@ export default async function EmbedTokenPage({ params, searchParams }: EmbedToke
           deployer={tokenData.deployer ?? undefined}
           showSymbol={embedConfig.showSymbol}
           showGridLines={embedConfig.showGridLines}
+          initialFrom={embedConfig.from}
+          initialTo={embedConfig.to}
         />
         </div>
         <EmbedBranding bgColor={embedConfig.bgColor} />
