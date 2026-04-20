@@ -12,7 +12,8 @@ export type HolderSortField =
   | 'remaining'
   | 'lastActive'
   | 'avgBuy'
-  | 'avgSell';
+  | 'avgSell'
+  | 'nativeBalance';
 
 export type SortDirection = 'asc' | 'desc';
 

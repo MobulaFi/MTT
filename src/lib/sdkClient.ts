@@ -2,6 +2,7 @@
  * SDK Client Wrapper
  * - Server mode: calls /api/sdk route (API key stays on server)
  * - Client mode: calls SDK directly (user's API key)
+ * - Client-short-lived mode: calls SDK directly with server-minted JWT
  */
 
 import { MobulaClient } from '@mobula_labs/sdk';
@@ -39,8 +40,9 @@ import {
   WSS_REGIONS,
   WSS_TYPES,
 } from '@/config/endpoints';
+import { getAuthToken, invalidateToken } from '@/lib/authTokenManager';
 
-type ApiMode = 'server' | 'client';
+type ApiMode = 'server' | 'client' | 'client-short-lived';
 
 // Client-side SDK client cache
 let clientSdkClient: MobulaClient | null = null;
@@ -57,13 +59,27 @@ interface StoredCustomWss {
 /**
  * Get current API mode
  * - SSR always uses 'server' mode
- * - Client reads from cookie (set via ApiSelectorDropdown toggle)
+ * - Client reads from localStorage for full mode (server | client | client-short-lived)
+ * - Falls back to cookie for compat
  */
 export function getCurrentApiMode(): ApiMode {
   if (typeof window === 'undefined') return 'server';
-  
-  const match = document.cookie.match(/apiKeySource=(server|client)/);
-  return (match?.[1] as ApiMode) ?? 'server';
+
+  // Read full mode from localStorage (includes 'client-short-lived')
+  try {
+    const raw = localStorage.getItem('mobula-api-storage');
+    if (raw) {
+      const parsed = JSON.parse(raw) as { state?: { apiKeySource?: string } };
+      const source = parsed.state?.apiKeySource;
+      if (source === 'server' || source === 'client' || source === 'client-short-lived') {
+        return source;
+      }
+    }
+  } catch { /* fall through */ }
+
+  // Fallback to cookie
+  const match = document.cookie.match(/apiKeySource=(server|client-short-lived|client)/);
+  return (match?.[1] as ApiMode) ?? 'client-short-lived';
 }
 
 /**
@@ -141,6 +157,49 @@ function loadClientSettings(): void {
       console.error('Error parsing localStorage:', e);
     }
   }
+}
+
+// Short-lived client cache
+let shortLivedClient: MobulaClient | null = null;
+let shortLivedBearer: string | null = null;
+
+/**
+ * Get or create client SDK for client-short-lived mode.
+ * Uses a server-minted JWT instead of a user-provided API key.
+ */
+export async function getShortLivedSdk(): Promise<MobulaClient> {
+  const token = await getAuthToken();
+
+  // If token changed (refreshed), recreate the client
+  if (!shortLivedClient || token !== shortLivedBearer) {
+    loadClientSettings();
+
+    const holdersWsOverride = process.env.NEXT_PUBLIC_HOLDERS_WS_URL;
+    if (holdersWsOverride) {
+      currentClientWssUrlMap.holders = holdersWsOverride;
+    }
+
+    const wsUrlMapToUse = Object.keys(currentClientWssUrlMap).length > 0 ? currentClientWssUrlMap : undefined;
+
+    shortLivedClient = new MobulaClient({
+      restUrl: currentClientRestUrl,
+      apiKey: token ?? undefined,
+      debug: true,
+      timeout: 200000,
+      wsUrlMap: wsUrlMapToUse,
+    });
+    shortLivedBearer = token;
+  }
+
+  return shortLivedClient;
+}
+
+/**
+ * Reinitialize short-lived SDK (e.g. after token invalidation)
+ */
+export function reinitShortLivedSdk(): void {
+  shortLivedClient = null;
+  shortLivedBearer = null;
 }
 
 /**
@@ -231,30 +290,17 @@ type SdkMethod =
   | 'fetchMarketLighthouse';
 
 /**
- * Call SDK method - routes to /api/sdk in server mode, direct SDK in client mode
+ * Call SDK method
+ * - server: proxies through /api/sdk
+ * - client: direct SDK with user's API key
+ * - client-short-lived: direct SDK with server-minted JWT
  */
-async function callSdk<T>(method: SdkMethod, params: Record<string, unknown>): Promise<T> {
-  const mode = getCurrentApiMode();
+function isTokenError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return msg.includes('401') || msg.includes('429') || msg.includes('Unauthorized') || msg.includes('request limit');
+}
 
-  if (mode === 'server') {
-    // Server mode: call /api/sdk route
-    const res = await fetch('/api/sdk', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ method, params }),
-    });
-
-    if (!res.ok) {
-      const error = await res.json();
-      throw new Error(error.error || 'SDK request failed');
-    }
-
-    return res.json();
-  }
-
-  // Client mode: call SDK directly
-  const client = getClientSdk();
-  
+async function executeClientMethod<T>(client: MobulaClient, method: SdkMethod, params: Record<string, unknown>): Promise<T> {
   switch (method) {
     case 'fetchTokenDetails':
       return client.fetchTokenDetails(params as Parameters<typeof client.fetchTokenDetails>[0]) as Promise<T>;
@@ -304,6 +350,43 @@ async function callSdk<T>(method: SdkMethod, params: Record<string, unknown>): P
       return client.request<Record<string, unknown>, T>('get', '/api/2/market/lighthouse', params as Record<string, unknown>) as Promise<T>;
     default:
       throw new Error(`Unknown method: ${method}`);
+  }
+}
+
+async function callSdk<T>(method: SdkMethod, params: Record<string, unknown>): Promise<T> {
+  const mode = getCurrentApiMode();
+
+  if (mode === 'server') {
+    const res = await fetch('/api/sdk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ method, params }),
+    });
+
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.error || 'SDK request failed');
+    }
+
+    return res.json();
+  }
+
+  // Client or client-short-lived: call SDK directly
+  const client = mode === 'client-short-lived'
+    ? await getShortLivedSdk()
+    : getClientSdk();
+
+  try {
+    return await executeClientMethod<T>(client, method, params);
+  } catch (error) {
+    // Token exhausted — invalidate, get fresh token, rebuild client, retry once
+    if (mode === 'client-short-lived' && isTokenError(error)) {
+      invalidateToken();
+      reinitShortLivedSdk();
+      const retryClient = await getShortLivedSdk();
+      return executeClientMethod<T>(retryClient, method, params);
+    }
+    throw error;
   }
 }
 
@@ -466,13 +549,33 @@ function subscribeToStream(
     };
   }
 
-  // Client mode: use SDK WebSocket directly
-  const client = getClientSdk();
-  const subscriptionId = client.streams.subscribe(streamType, payload, callback);
+  // Client or client-short-lived: use SDK WebSocket directly
+  const getClient = async () => {
+    if (mode === 'client-short-lived') return getShortLivedSdk();
+    return getClientSdk();
+  };
+
+  // Need to handle async client init for short-lived mode
+  let subscriptionId: string | null = null;
+  let resolvedClient: MobulaClient | null = null;
+
+  const initPromise = getClient().then((c) => {
+    resolvedClient = c;
+    subscriptionId = c.streams.subscribe(streamType, payload, callback);
+  });
 
   return {
     unsubscribe: () => {
-      client.streams.unsubscribe(streamType, subscriptionId);
+      if (resolvedClient && subscriptionId) {
+        resolvedClient.streams.unsubscribe(streamType, subscriptionId);
+      } else {
+        // If still initializing, unsub after init completes
+        initPromise.then(() => {
+          if (resolvedClient && subscriptionId) {
+            resolvedClient.streams.unsubscribe(streamType, subscriptionId);
+          }
+        });
+      }
     },
   };
 }

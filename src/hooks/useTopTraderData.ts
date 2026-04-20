@@ -75,7 +75,8 @@ export function useTopTradersData({ tokenAddress, blockchain }: UseTopTradersDat
             if (!updateData?.walletAddress) break;
 
             const balance = Number(updateData.tokenAmount) || 0;
-            if (balance <= 0) {
+            const hasPnl = Number(updateData.realizedPnlUSD) !== 0 || Number(updateData.totalPnlUSD) !== 0;
+            if (balance <= 0 && !hasPnl) {
               removeHolder(updateData.walletAddress);
             } else {
               upsertHolder(updateData as TokenPositionsOutputResponse);

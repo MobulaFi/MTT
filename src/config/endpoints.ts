@@ -8,7 +8,7 @@ export const REST_ENDPOINTS = {
 
 export type RestEndpointKey = keyof typeof REST_ENDPOINTS;
 
-export const DEFAULT_REST_ENDPOINT: RestEndpointKey = 'PREMIUM';
+export const DEFAULT_REST_ENDPOINT: RestEndpointKey = 'STANDARD';
 
 export const WSS_REGIONS = {
   default: 'wss://default.mobula.io',

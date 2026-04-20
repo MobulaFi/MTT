@@ -30,9 +30,11 @@ export const useCombinedHolders = (
     removeHolder,
   } = usePairHoldersStore();
 
-  // Batch holder updates per animation frame to avoid per-message re-renders
+  // Batch holder updates with a throttle to avoid overwhelming React on hot tokens
   const pendingUpdates = useRef(new Map<string, TokenPositionsOutputResponse>());
-  const rafScheduled = useRef(false);
+  const pendingPrice = useRef<number | null>(null);
+  const throttleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const THROTTLE_MS = 500;
 
   useEffect(() => {
     if (!tokenAddress || !blockchain) return;
@@ -43,7 +45,11 @@ export const useCombinedHolders = (
     if (totalSupply) setTotalSupply(totalSupply);
     setLoading(true);
     pendingUpdates.current.clear();
-    rafScheduled.current = false;
+    pendingPrice.current = null;
+    if (throttleTimer.current) {
+      clearTimeout(throttleTimer.current);
+      throttleTimer.current = null;
+    }
 
     let cancelled = false;
     let httpLoaded = false;
@@ -114,31 +120,37 @@ export const useCombinedHolders = (
               break;
             }
 
-            // Derive live price from the update (tokenAmountUSD / tokenAmount)
+            // Queue price update (will be flushed with the holder batch)
             const updBalance = Number(data.tokenAmount) || 0;
             const updUSD = Number(data.tokenAmountUSD) || 0;
             if (updBalance > 0 && updUSD > 0) {
-              const livePrice = updUSD / updBalance;
-              setTokenPrice(livePrice);
+              pendingPrice.current = updUSD / updBalance;
             }
 
-            // Batch the individual holder update via rAF
+            // Queue the holder update
             pendingUpdates.current.set(data.walletAddress, data as TokenPositionsOutputResponse);
-            if (!rafScheduled.current) {
-              rafScheduled.current = true;
-              requestAnimationFrame(() => {
-                rafScheduled.current = false;
+
+            // Flush at most once per THROTTLE_MS
+            if (!throttleTimer.current) {
+              throttleTimer.current = setTimeout(() => {
+                throttleTimer.current = null;
                 const batch = pendingUpdates.current;
                 if (batch.size === 0) return;
+
+                // Flush price
+                if (pendingPrice.current !== null) {
+                  setTokenPrice(pendingPrice.current);
+                  pendingPrice.current = null;
+                }
+
+                // Flush holder updates
                 const { holders } = usePairHoldersStore.getState();
                 const updated = [...holders];
-                let upserted = 0;
-                let removed = 0;
                 for (const [wallet, pos] of batch) {
                   const balance = Number(pos.tokenAmount) || 0;
                   if (balance <= 0) {
                     const idx = updated.findIndex((h) => h.walletAddress.toLowerCase() === wallet.toLowerCase());
-                    if (idx >= 0) { updated.splice(idx, 1); removed++; }
+                    if (idx >= 0) updated.splice(idx, 1);
                   } else {
                     const idx = updated.findIndex((h) => h.walletAddress.toLowerCase() === wallet.toLowerCase());
                     if (idx >= 0) {
@@ -146,12 +158,11 @@ export const useCombinedHolders = (
                     } else {
                       updated.push(pos);
                     }
-                    upserted++;
                   }
                 }
                 batch.clear();
                 usePairHoldersStore.setState({ holders: updated });
-              });
+              }, THROTTLE_MS);
             }
             break;
           }
@@ -180,6 +191,10 @@ export const useCombinedHolders = (
 
     return () => {
       cancelled = true;
+      if (throttleTimer.current) {
+        clearTimeout(throttleTimer.current);
+        throttleTimer.current = null;
+      }
       sub.unsubscribe();
       clearHolders();
       setLoading(false);

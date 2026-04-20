@@ -29,7 +29,7 @@ export async function POST(request: Request) {
 
   // Priority: 1. Cookie customRestUrl, 2. Env var, 3. Default
   let restUrl = process.env.MOBULA_SERVER_SIDE_API_URL || 'https://api.mobula.io';
-  
+
   // Check for custom REST URL from cookie (set by ApiSelectorDropdown)
   const cookieHeader = request.headers.get('cookie');
   if (cookieHeader) {

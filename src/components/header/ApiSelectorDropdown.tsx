@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useApiStore } from '@/store/apiStore';
 import { initMobulaClient, reinitMobulaClient } from '@/lib/mobulaClient';
-import { FiServer, FiEdit2, FiPlus, FiX, FiRadio, FiKey, FiTrash2, FiEye, FiEyeOff } from 'react-icons/fi';
+import { FiServer, FiEdit2, FiPlus, FiX, FiRadio, FiKey, FiTrash2, FiEye, FiEyeOff, FiZap } from 'react-icons/fi';
 import type { SubscriptionPayload } from '@mobula_labs/sdk';
 import {
   DEFAULT_WSS_REGION,
@@ -377,6 +377,20 @@ export const ApiSelectorDropdown = ({
           <FiRadio size={12} />
           <span>Client</span>
         </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (apiKeySource !== 'client-short-lived') {
+              setApiKeySource('client-short-lived');
+              setServerDisplayInfo(null, null);
+              window.location.reload();
+            }
+          }}
+          className={`flex-1 px-2.5 py-1.5 text-[11px] font-semibold rounded transition-all duration-200 flex items-center justify-center gap-1 ${apiKeySource === 'client-short-lived' ? 'text-white bg-success/20 border border-success/30' : 'text-textTertiary hover:text-ghost border border-transparent'}`}
+        >
+          <FiZap size={12} />
+          <span>Token</span>
+        </button>
       </div>
 
       {apiKeySource === 'server' ? (
@@ -401,6 +415,25 @@ export const ApiSelectorDropdown = ({
               <span className={`text-[10px] font-mono tabular-nums shrink-0 ml-1 ${serverLatency === 'error' ? 'text-red-500' : 'text-gray-400'}`}>
                 {serverLatency}
               </span>
+            </div>
+          </div>
+        </>
+      ) : apiKeySource === 'client-short-lived' ? (
+        /* Token mode: auto-managed short-lived JWT */
+        <>
+          <div className="px-3 py-2 border-b border-borderSurface bg-bgDeepAlt/50">
+            <h3 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
+              <FiZap size={10} />
+              Short-Lived Token
+            </h3>
+          </div>
+          <div className="px-3 py-3">
+            <p className="text-[11px] text-textSecondary leading-relaxed">
+              Uses a server-minted JWT that auto-refreshes before expiry. No API key needed — the server handles token creation.
+            </p>
+            <div className="mt-2 flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              <span className="text-[10px] text-green-400 font-medium">Active — token managed automatically</span>
             </div>
           </div>
         </>

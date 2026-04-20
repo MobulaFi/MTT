@@ -32,10 +32,10 @@ interface ApiStore {
   selectedRestUrl: string | null;
   apiKey: string | null;
 
-  apiKeySource: 'server' | 'client';
+  apiKeySource: 'server' | 'client' | 'client-short-lived';
   serverDisplayLabel: string | null;
   serverLatency: string | null;
-  setApiKeySource: (source: 'server' | 'client') => void;
+  setApiKeySource: (source: 'server' | 'client' | 'client-short-lived') => void;
   setServerDisplayInfo: (label: string | null, latency: string | null) => void;
 
   // WSS
@@ -93,7 +93,7 @@ export const useApiStore = create<ApiStore>()(
       selectedWssRegion: DEFAULT_WSS_REGION,
       selectedRestUrl: null,
       apiKey: null,
-      apiKeySource: 'server',
+      apiKeySource: 'client-short-lived',
       serverDisplayLabel: null,
       serverLatency: null,
       streamMode: 'pulse-v2' as StreamMode,
@@ -103,7 +103,6 @@ export const useApiStore = create<ApiStore>()(
       setCurrentUrl: (url) => set({ currentUrl: url }),
 
       setApiKeySource: (source) => {
-        // Set cookie for sdkClient.ts to read
         if (typeof document !== 'undefined') {
           document.cookie = `apiKeySource=${source}; path=/; max-age=31536000`; // 1 year
         }
@@ -245,10 +244,18 @@ export const useApiStore = create<ApiStore>()(
         streamMode: state.streamMode,
       }),
       onRehydrateStorage: () => (state) => {
-        // Sync apiKeySource cookie when store is rehydrated from localStorage
-        if (state?.apiKeySource && typeof document !== 'undefined') {
-          document.cookie = `apiKeySource=${state.apiKeySource}; path=/; max-age=31536000`;
+        if (!state || typeof window === 'undefined') return;
+
+        // One-time migration: set existing users to client-short-lived
+        const migrationKey = 'mobula-api-migrated-v1';
+        if (!localStorage.getItem(migrationKey)) {
+          localStorage.setItem(migrationKey, '1');
+          state.setApiKeySource('client-short-lived');
+          return;
         }
+
+        // Sync apiKeySource cookie when store is rehydrated from localStorage
+        document.cookie = `apiKeySource=${state.apiKeySource}; path=/; max-age=31536000`;
       },
     }
   )

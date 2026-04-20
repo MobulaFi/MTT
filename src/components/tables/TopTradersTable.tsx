@@ -4,7 +4,7 @@ import {
   formatPercentage,
   buildExplorerUrl,
 } from '@mobula_labs/sdk';
-import { ExternalLink, Filter, X, Building2 } from 'lucide-react';
+import { ExternalLink, Filter, Building2 } from 'lucide-react';
 import { useWalletModalStore } from '@/store/useWalletModalStore';
 import {
   Tooltip,
@@ -16,6 +16,7 @@ import { HOLDER_TAG_ICONS } from '@/assets/icons/HolderTags';
 import { HoldersTableSkeleton } from '../skeleton';
 import { PriceDisplay } from '../PriceDisplay';
 import { useTopTradersData } from '@/hooks/useTopTraderData';
+import { getTokenAge } from '@/utils/Formatter';
 
 // Wallet metadata type from API
 interface WalletMetadata {
@@ -84,12 +85,12 @@ const headers = [
   { label: '#', align: 'text-left', width: 'w-[10px] pl-5' },
   { label: '/', align: 'text-left', width: 'w-[1px] px-2' },
   { label: 'Wallet', align: 'text-left', width: 'w-[150px]' },
-  { label: 'Wallet Balance', align: 'text-left', width: 'w-[100px]' },
   { label: 'Bought', align: 'text-left', width: 'w-[100px]' },
   { label: 'Sold', align: 'text-left', width: 'w-[100px]' },
+  { label: 'Total PnL', align: 'text-left', width: 'w-[120px]' },
   { label: 'Platform', align: 'text-left', width: 'w-[90px]' },
   { label: 'Remaining', align: 'text-left', width: 'w-[120px]' },
-  { label: 'Unrealized PNL', align: 'text-right', width: 'w-[120px] pr-5' },
+  { label: 'Last Active', align: 'text-right', width: 'w-[90px] pr-5' },
 ];
 
 export function TopTradersTable({
@@ -165,6 +166,12 @@ export function TopTradersTable({
                   const totalSupplyNum = Number(totalSupply);
                   const remainingPercent =
                     totalSupplyNum > 0 ? (tokenAmountNum / totalSupplyNum) * 100 : 0;
+                  const balanceUSD = Number(trader.tokenAmountUSD) || 0;
+                  const realizedPnlValue = Number(trader.realizedPnlUSD) || 0;
+                  const unrealizedPnlValue = Number(trader.unrealizedPnlUSD) || 0;
+                  const totalPnlValue = Number(trader.totalPnlUSD) || (realizedPnlValue + unrealizedPnlValue);
+                  const avgBuyPrice = Number(trader.avgBuyPriceUSD) || 0;
+                  const avgSellPrice = Number(trader.avgSellPriceUSD) || 0;
 
                   return (
                     <tr
@@ -221,8 +228,8 @@ export function TopTradersTable({
                           </span>
 
                           {/* Wallet Entity (CEX, Market Maker, etc.) */}
-                          <WalletEntityBadge 
-                            metadata={(trader as typeof trader & { walletMetadata?: WalletMetadata }).walletMetadata} 
+                          <WalletEntityBadge
+                            metadata={(trader as typeof trader & { walletMetadata?: WalletMetadata }).walletMetadata}
                           />
 
                           {trader.labels && trader.labels.length > 0 && (
@@ -277,16 +284,84 @@ export function TopTradersTable({
                         </div>
                       </td>
 
-                      <td className="text-left text-grayGhost font-medium text-xs leading-[16px] tracking-normal align-middle">
-                        {formatPureNumber(trader.tokenAmount)}
+                      {/* Bought + Avg Buy + Buys count */}
+                      <td className="text-left font-normal text-xs leading-[16px] tracking-normal align-middle">
+                        <div className="flex flex-col">
+                          <span className="text-success">
+                            <PriceDisplay usdAmount={trader.volumeBuyUSD} />
+                          </span>
+                          <div className="flex items-center gap-1 text-[10px] text-grayGhost">
+                            <span>{trader.buys || 0} buys</span>
+                            {avgBuyPrice > 0 && (
+                              <>
+                                <span>·</span>
+                                <span>avg <PriceDisplay usdAmount={avgBuyPrice} /></span>
+                              </>
+                            )}
+                          </div>
+                        </div>
                       </td>
 
-                      <td className="text-left text-success font-normal text-xs leading-[16px] tracking-normal align-middle">
-                        <PriceDisplay usdAmount={trader.volumeBuyUSD} />
+                      {/* Sold + Avg Sell + Sells count */}
+                      <td className="text-left font-normal text-xs leading-[16px] tracking-normal align-middle">
+                        <div className="flex flex-col">
+                          <span className="text-white">
+                            <PriceDisplay usdAmount={trader.volumeSellUSD} />
+                          </span>
+                          <div className="flex items-center gap-1 text-[10px] text-grayGhost">
+                            <span>{trader.sells || 0} sells</span>
+                            {avgSellPrice > 0 && (
+                              <>
+                                <span>·</span>
+                                <span>avg <PriceDisplay usdAmount={avgSellPrice} /></span>
+                              </>
+                            )}
+                          </div>
+                        </div>
                       </td>
 
-                      <td className="text-left font-normal text-xs leading-[16px] tracking-normal align-middle text-white">
-                        <PriceDisplay usdAmount={trader.volumeSellUSD} />
+                      {/* Total PnL with Realized/Unrealized breakdown */}
+                      <td className="text-left">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="flex flex-col cursor-help">
+                              <span className={`font-medium ${totalPnlValue >= 0 ? 'text-success' : 'text-red-500'}`}>
+                                <PriceDisplay usdAmount={totalPnlValue} />
+                              </span>
+                              <div className="flex items-center gap-2 text-[9px]">
+                                <span className={realizedPnlValue >= 0 ? 'text-success/70' : 'text-red-500/70'}>
+                                  R: <PriceDisplay usdAmount={realizedPnlValue} />
+                                </span>
+                                <span className={unrealizedPnlValue >= 0 ? 'text-success/70' : 'text-red-500/70'}>
+                                  U: <PriceDisplay usdAmount={unrealizedPnlValue} />
+                                </span>
+                              </div>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="text-[10px]">
+                            <div className="flex flex-col gap-1 min-w-[100px]">
+                              <div className="font-semibold text-white mb-0.5">PnL Breakdown</div>
+                              <div className="flex justify-between gap-4">
+                                <span className="text-grayGhost">Realized:</span>
+                                <span className={realizedPnlValue >= 0 ? 'text-success' : 'text-red-500'}>
+                                  <PriceDisplay usdAmount={realizedPnlValue} align="right" />
+                                </span>
+                              </div>
+                              <div className="flex justify-between gap-4">
+                                <span className="text-grayGhost">Unrealized:</span>
+                                <span className={unrealizedPnlValue >= 0 ? 'text-success' : 'text-red-500'}>
+                                  <PriceDisplay usdAmount={unrealizedPnlValue} align="right" />
+                                </span>
+                              </div>
+                              <div className="flex justify-between gap-4 border-t border-borderDefault pt-1 mt-0.5">
+                                <span className="text-grayGhost font-medium">Total:</span>
+                                <span className={`font-medium ${totalPnlValue >= 0 ? 'text-success' : 'text-red-500'}`}>
+                                  <PriceDisplay usdAmount={totalPnlValue} align="right" />
+                                </span>
+                              </div>
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
                       </td>
 
                       {/* Platform */}
@@ -296,11 +371,11 @@ export function TopTradersTable({
                           return platform?.name ? (
                             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-bgTertiary text-[10px] font-medium text-white">
                               {platform.logo && (
-                                <img 
-                                  src={platform.logo} 
-                                  width={12} 
-                                  height={12} 
-                                  alt={platform.name || ''} 
+                                <img
+                                  src={platform.logo}
+                                  width={12}
+                                  height={12}
+                                  alt={platform.name || ''}
                                   className="rounded-full"
                                 />
                               )}
@@ -312,11 +387,19 @@ export function TopTradersTable({
                         })()}
                       </td>
 
+                      {/* Remaining */}
                       <td>
-                        <div className="flex items-center gap-3">
-                          <span className="text-grayGhost font-normal text-xs leading-[16px] tracking-normal text-center w-14">
-                            {formatPercentage(remainingPercent)}
-                          </span>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-grayGhost font-normal text-xs leading-[16px] tracking-normal text-center w-14">
+                              {formatPercentage(remainingPercent)}
+                            </span>
+                            {balanceUSD > 0 && (
+                              <span className="text-[10px] text-grayGhost">
+                                <PriceDisplay usdAmount={balanceUSD} />
+                              </span>
+                            )}
+                          </div>
                           <div className="w-full bg-borderDefault rounded-full h-1 overflow-hidden">
                             <div
                               className="bg-success h-1 rounded-full"
@@ -329,13 +412,15 @@ export function TopTradersTable({
                         </div>
                       </td>
 
-                      <td
-                        className={`pr-5 text-right font-medium ${Number(trader.pnlUSD) >= 0
-                            ? 'text-success'
-                            : 'text-red-500'
-                          }`}
-                      >
-                        <PriceDisplay usdAmount={trader.pnlUSD} align='right' />
+                      {/* Last Active */}
+                      <td className="pr-5 text-right text-grayGhost text-[10px]">
+                        {trader.lastTradeAt ? (
+                          getTokenAge(trader.lastTradeAt)
+                        ) : trader.lastActivityAt ? (
+                          getTokenAge(trader.lastActivityAt)
+                        ) : (
+                          '—'
+                        )}
                       </td>
                     </tr>
                   );

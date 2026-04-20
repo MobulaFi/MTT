@@ -6,7 +6,7 @@ import { REST_ENDPOINTS, DEFAULT_REST_ENDPOINT } from '@/config/endpoints';
 function getServerClient(request: NextRequest) {
   // Priority: 1. Cookie customRestUrl, 2. Env var, 3. Default
   let restUrl = process.env.MOBULA_SERVER_SIDE_API_URL || REST_ENDPOINTS[DEFAULT_REST_ENDPOINT];
-  
+
   // Check for custom REST URL from cookie (set by ApiSelectorDropdown)
   const customRestUrlCookie = request.cookies.get('customRestUrl');
   if (customRestUrlCookie?.value) {
@@ -19,9 +19,9 @@ function getServerClient(request: NextRequest) {
       console.error('Error parsing customRestUrl cookie:', e);
     }
   }
-  
-  const apiKey = 'a1ca9490-e255-42cd-96eb-9ddb5931c8fd';
-  
+
+  const apiKey = process.env.MOBULA_SERVER_SIDE_KEY || '';
+
   return new MobulaClient({
     restUrl,
     apiKey,
@@ -31,7 +31,7 @@ function getServerClient(request: NextRequest) {
 }
 
 // Supported SDK methods
-type SdkMethod = 
+type SdkMethod =
   | 'fetchTokenDetails'
   | 'fetchMarketDetails'
   | 'fetchTokenMarkets'
