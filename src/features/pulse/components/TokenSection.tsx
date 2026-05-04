@@ -57,6 +57,19 @@ function filterTokensBySearch(tokens: PulseToken[], query: string): PulseToken[]
   });
 }
 
+function getTokenBondingPercentage(token: PulseToken): number {
+  const flatToken = token?.token?.address ? { ...token, ...token.token } : token;
+  const tokenData = flatToken as Record<string, unknown>;
+  const value = tokenData.bondingPercentage ?? tokenData.bonding_percentage;
+  const percentage = typeof value === 'number' ? value : Number(value);
+
+  return Number.isFinite(percentage) ? percentage : Number.NEGATIVE_INFINITY;
+}
+
+function sortTokensByBondingPercentage(tokens: PulseToken[]): PulseToken[] {
+  return [...tokens].sort((a, b) => getTokenBondingPercentage(b) - getTokenBondingPercentage(a));
+}
+
 /**
  * Get badge state based on stream status
  * 
@@ -164,8 +177,9 @@ export default function TokenSection({
 
   // Get filtered tokens based on search query (memoized)
   const filteredTokens = useMemo(() => {
-    return filterTokensBySearch(tokens, searchQuery);
-  }, [tokens, searchQuery]);
+    const searchedTokens = filterTokensBySearch(tokens, searchQuery);
+    return viewName === 'bonding' ? sortTokensByBondingPercentage(searchedTokens) : searchedTokens;
+  }, [tokens, searchQuery, viewName]);
 
   const handleFilterOpen = useCallback(() => {
     setIsFilterModalOpen(true);

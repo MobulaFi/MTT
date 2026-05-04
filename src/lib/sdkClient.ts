@@ -41,6 +41,7 @@ import {
   WSS_TYPES,
 } from '@/config/endpoints';
 import { getAuthToken, invalidateToken } from '@/lib/authTokenManager';
+import { ensurePulseV2SubscriptionId, subscribePulseV2Compressed } from '@/features/pulse/pulseV2WsClient';
 
 type ApiMode = 'server' | 'client' | 'client-short-lived';
 
@@ -469,6 +470,7 @@ export const sdk = {
 type StreamType = 'fast-trade' | 'pulse-v2' | 'token-details' | 'market-details' | 'ohlcv' | 'position' | 'stream-svm' | 'stream-evm' | 'holders';
 
 interface StreamSubscription {
+  subscriptionId?: string;
   unsubscribe: () => void;
 }
 
@@ -485,6 +487,7 @@ function subscribeToStream(
   callback: (data: unknown) => void
 ): StreamSubscription {
   const mode = getCurrentApiMode();
+  const payloadSubscriptionId = typeof payload.subscriptionId === 'string' ? payload.subscriptionId : undefined;
 
   if (mode === 'server') {
     // Server mode: use SSE endpoint
@@ -542,6 +545,7 @@ function subscribeToStream(
     activeServerStreams.set(streamId, { controller, eventSource: null });
 
     return {
+      subscriptionId: payloadSubscriptionId,
       unsubscribe: () => {
         controller.abort();
         activeServerStreams.delete(streamId);
@@ -595,13 +599,29 @@ export const streams = {
   },
 
   /**
-   * Subscribe to pulse-v2 stream
+   * Subscribe to pulse-v2 stream.
+   *
+   * Pulse V2 supports gzip compression on every WS frame when the subscribe
+   * payload has `compressed: true`. The published `@mobula_labs/sdk` does not
+   * decompress those frames, so for client-side modes we use a dedicated
+   * direct WebSocket client (`pulseV2WsClient`) that handles gunzip.
+   *
+   * In server (SSE) mode the SDK runs inside the Next.js route, which also
+   * cannot decompress — the route forces `compressed: false` server-side
+   * (see app/api/stream/route.ts) so this path stays plain JSON.
    */
   subscribePulseV2: (
     params: PulsePayloadParams,
     callback: (data: unknown) => void
   ): StreamSubscription => {
-    return subscribeToStream('pulse-v2', params, callback);
+    const mode = getCurrentApiMode();
+    const payload = ensurePulseV2SubscriptionId(params as Record<string, unknown>);
+    if (mode === 'server') {
+      return subscribeToStream('pulse-v2', payload, callback);
+    }
+    return subscribePulseV2Compressed(payload, callback, {
+      useShortLivedToken: mode === 'client-short-lived',
+    });
   },
 
   /**

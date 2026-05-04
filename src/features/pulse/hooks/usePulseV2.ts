@@ -10,7 +10,7 @@ import { ViewName, type PulseToken } from '@/features/pulse/store/usePulseDataSt
 import { UpdateBatcher } from '@/utils/UpdateBatcher';
 
 // Stream subscription type
-type StreamSubscription = { unsubscribe: () => void };
+type StreamSubscription = { subscriptionId?: string; unsubscribe: () => void };
 
 type WssPulseV2ResponseType =
   | {
@@ -77,7 +77,7 @@ export interface UsePulseV2Return {
 export function usePulseV2(
   address: string,
   blockchain: string,
-  { enabled = true, compressed = false }: UsePulseV2Options = {}
+  { enabled = true, compressed = true }: UsePulseV2Options = {}
 ): UsePulseV2Return {
   const subscriptionRef = useRef<StreamSubscription | null>(null);
   const prevPayloadStrRef = useRef<string>('');
@@ -485,11 +485,15 @@ export function usePulseV2(
     setLoading(true);
 
     try {
-      // Use filter state params from payload, fallback to defaults
+      // Use filter state params from payload, fallback to defaults.
+      // NOTE: REST `compressed: true` triggered CORS issues in PulseV2Controller's
+      // gzip path (the controller returns the buffer directly, bypassing the
+      // standard NestJS response pipeline that injects CORS headers). We keep
+      // gzip on the WS path only — that's where the bandwidth savings matter.
       const restPayload = payload
         ? {
             assetMode: payload.assetMode ?? true,
-            compressed: payload.compressed ?? false,
+            compressed: false,
             views: payload.views,
           }
         : {
@@ -769,7 +773,7 @@ export function usePulseV2(
     applyFilters,
     resetFilters,
     debugInfo: {
-      subscriptionId: subscriptionRef.current ? 'active' : null,
+      subscriptionId: subscriptionRef.current?.subscriptionId ?? null,
       payloadStr,
       lastMessage: lastProcessedMessageRef.current.substring(0, 100),
       messageCount: messageCountRef.current,
