@@ -7,6 +7,7 @@ import { Toaster } from "@/components/ui/sonner"
 import { EIP6963Initializer } from '@/components/wallet/EIP6963Initializer';
 import { WalletPortfolioModalWrapper } from '@/components/shared/WalletPortfolioModalWrapper';
 import { NetworkAutoSwitcher } from '@/components/providers/NetworkAutoSwitcher';
+import { SystemMetadataInitializer } from '@/components/providers/SystemMetadataInitializer';
 
 export const metadata = {
   title: 'Mobula Trading Terminal',
@@ -42,6 +43,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         />
       </head>
       <body className="font-menlo w-full bg-bgPrimary text-foreground" suppressHydrationWarning>
+        <SystemMetadataInitializer />
         <NetworkAutoSwitcher />
         <EIP6963Initializer />
         <Toaster />
