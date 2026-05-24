@@ -6,9 +6,13 @@ import { PairHeaderSkeleton } from "@/components/skeleton";
 import { useTokenData } from "@/features/token/hooks/useTokenData";
 import { useTokenStore } from "@/features/token/store/useTokenStore";
 import { useTradingDataStore } from "@/store/useTradingDataStore";
+import { useTradingStore } from "@/store/tradingStore";
 import { buildNativeSymbol } from "@mobula_labs/sdk";
 
-function tokenToHeaderData(tokenData: TokenDetailsResponse['data']): BaseHeaderData {
+function tokenToHeaderData(
+    tokenData: TokenDetailsResponse['data'],
+    quoteSymbol: string | undefined,
+): BaseHeaderData {
     return {
         primaryToken: {
             address: tokenData?.address,
@@ -23,7 +27,7 @@ function tokenToHeaderData(tokenData: TokenDetailsResponse['data']): BaseHeaderD
         },
         secondaryToken: {
             priceUSD: tokenData.priceToken,
-            symbol: buildNativeSymbol(tokenData?.chainId)
+            symbol: quoteSymbol ?? buildNativeSymbol(tokenData?.chainId),
         },
         address: tokenData?.address,
         liquidityUSD: tokenData?.liquidityUSD,
@@ -52,6 +56,7 @@ export function TokenHeader({
     const liveToken = useTokenStore((state) => state.token);
     const tokenLoading = useTokenStore((state) => state.tokenLoading);
     const error = useTokenStore((state) => state.error);
+    const markets = useTradingStore((state) => state.markets);
 
     const tokenData = liveToken || token;
     
@@ -73,7 +78,11 @@ export function TokenHeader({
         return <PairHeaderSkeleton />;
     }
 
-    const headerData = tokenToHeaderData(tokenData);
+    const preferredMarket =
+        markets.find((m) => m.poolAddress === tokenData.poolAddress) ?? markets[0];
+    const quoteSymbol = preferredMarket?.quoteSymbol;
+
+    const headerData = tokenToHeaderData(tokenData, quoteSymbol);
 
     return (
         <DataHeader
